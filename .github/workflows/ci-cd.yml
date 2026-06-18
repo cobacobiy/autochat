@@ -200,8 +200,6 @@ jobs:
         run: |
           echo "Deploying shopee-autochat-bot:latest to production..."
 
-
-
           # Deploy production via docker compose
           $DOCKER_USER = $env:DOCKER_USERNAME
           if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
