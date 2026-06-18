@@ -174,8 +174,8 @@ jobs:
             -e HEADLESS=false `
             -e POLL_INTERVAL=10 `
             -e VNC_PASSWORD=previewpass `
-            -v "$PWD/bot-profile-preview:/data/shopee-profile" `
-            -v "$PWD/logs-preview:/data/logs" `
+            -v "shopee-bot-profile-preview:/data/shopee-profile" `
+            -v "shopee-bot-logs-preview:/data/logs" `
             -p 6081:6080 `
             "$IMAGE"
 
@@ -200,8 +200,7 @@ jobs:
         run: |
           echo "Deploying shopee-autochat-bot:latest to production..."
 
-          # Hapus container preview kalau masih jalan
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
+
 
           # Deploy production via docker compose
           $DOCKER_USER = $env:DOCKER_USERNAME

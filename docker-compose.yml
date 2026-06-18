@@ -23,9 +23,9 @@ services:
 
     volumes:
       # Persist Chromium session so login survives container restarts
-      - ./bot-profile:/data/shopee-profile
+      - shopee-bot-profile:/data/shopee-profile
       # Persist logs on the host for easy tailing
-      - ./logs:/data/logs
+      - shopee-bot-logs:/data/logs
 
     ports:
       # noVNC web interface — open http://localhost:6080 to view/control the browser
@@ -36,3 +36,7 @@ services:
       resources:
         limits:
           memory: 1g
+
+volumes:
+  shopee-bot-profile:
+  shopee-bot-logs:

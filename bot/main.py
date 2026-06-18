@@ -226,10 +226,12 @@ async def run_bot():
         context = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_DIR,
             headless=os.getenv("HEADLESS", "true").lower() == "true",
+            ignore_default_args=["--enable-automation"],
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
             ],
             viewport={"width": 1280, "height": 900},
         )
