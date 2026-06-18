@@ -6,6 +6,7 @@ Runs as a daemon using Playwright persistent context for session persistence.
 import asyncio
 import logging
 import os
+import signal
 import sys
 
 from playwright.async_api import async_playwright
@@ -48,7 +49,6 @@ def get_auto_reply(message: str) -> str:
         if keyword in msg_lower:
             return reply
     return DEFAULT_REPLY
-
 
 
 async def handle_unread_chats(page) -> int:
@@ -120,7 +120,27 @@ async def run_bot():
     log.info("Poll interval: %ds", POLL_INTERVAL_SECONDS)
 
     os.makedirs(PROFILE_DIR, exist_ok=True)
-    os.makedirs("/data/logs", exist_ok=True)
+
+    # Set up graceful shutdown event and signals
+    shutdown_event = asyncio.Event()
+
+    def ask_exit(signame):
+        log.info("Received signal %s, initiating graceful shutdown...", signame)
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    for signame in ('SIGINT', 'SIGTERM'):
+        try:
+            loop.add_signal_handler(
+                getattr(signal, signame),
+                lambda: ask_exit(signame)
+            )
+        except NotImplementedError:
+            # Fallback for Windows where loop.add_signal_handler is not implemented
+            def win_handler(sig, frame):
+                log.info("Received signal %s (Windows), initiating graceful shutdown...", sig)
+                loop.call_soon_threadsafe(shutdown_event.set)
+            signal.signal(getattr(signal, signame), win_handler)
 
     async with async_playwright() as p:
         log.info("Launching persistent Chromium context…")
@@ -149,18 +169,32 @@ async def run_bot():
                 PROFILE_DIR,
             )
             # Keep browser open so user can log in via VNC
-            await asyncio.sleep(300)
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                pass
+            log.info("Closing persistent Chromium context...")
             await context.close()
             return
 
         log.info("Logged in — entering polling loop (every %ds)", POLL_INTERVAL_SECONDS)
 
-        while True:
+        while not shutdown_event.is_set():
             try:
-                # Reload or navigate to refresh chat list
-                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                await page.wait_for_timeout(2000)
+                # Dynamic routing check (detect if redirected to login page)
+                if "login" in page.url or "auth" in page.url:
+                    log.warning("Detected logout/redirect to login page. Retrying navigation...")
+                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(3000)
+                    if "login" in page.url or "auth" in page.url:
+                        log.error("Still not logged in. Waiting for user login...")
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=60)
+                        except asyncio.TimeoutError:
+                            pass
+                        continue
 
+                # Scan and reply to unread chats directly on the live page
                 count = await handle_unread_chats(page)
                 if count:
                     log.info("Processed %d chat(s) this cycle", count)
@@ -169,10 +203,27 @@ async def run_bot():
 
             except Exception as exc:
                 log.error("Unexpected error in poll loop: %s", exc, exc_info=True)
-                # Brief pause before retrying to avoid hammering on persistent errors
-                await asyncio.sleep(15)
+                # Try reloading the page on error to recover state
+                try:
+                    log.info("Attempting page reload to recover...")
+                    await page.reload(wait_until="domcontentloaded")
+                    await page.wait_for_timeout(3000)
+                except Exception as reload_exc:
+                    log.error("Failed to reload page: %s", reload_exc)
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=15)
+                except asyncio.TimeoutError:
+                    pass
+                continue
 
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_INTERVAL_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+
+        log.info("Gracefully closing Playwright context and browser...")
+        await context.close()
+        log.info("Graceful shutdown complete.")
 
 
 if __name__ == "__main__":

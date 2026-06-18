@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     novnc \
     supervisor \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -16,8 +17,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-install Chromium for Playwright
-RUN playwright install chromium
 
 COPY . .
 

@@ -9,6 +9,12 @@ services:
 
     restart: unless-stopped
 
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "main.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
     environment:
       # Set to "false" when using VNC for manual login, "true" for headless ops
       - HEADLESS=false

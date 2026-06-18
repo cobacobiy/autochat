@@ -71,6 +71,9 @@ docker compose logs -f shopee-bot
 | `HEADLESS` | `false` | `true` untuk headless penuh (tanpa VNC) |
 | `PROFILE_DIR` | `/data/shopee-profile` | Path profil Chromium di dalam container |
 | `POLL_INTERVAL` | `5` | Interval polling chat (detik) |
+| `SHOPEE_CHAT_URL` | `https://seller.shopee.co.id/portal/chat` | URL portal chat Shopee Seller |
+| `LOG_DIR` | `/data/logs` | Direktori file log |
+| `VNC_PASSWORD` | *(empty)* | Password keamanan VNC (opsional, jika kosong VNC terbuka tanpa password) |
 
 ---
 
