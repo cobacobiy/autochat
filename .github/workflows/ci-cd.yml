@@ -115,6 +115,7 @@ jobs:
           echo "Image tag: $TAG"
 
       - name: Login to Docker Hub
+        if: "${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}"
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -125,11 +126,17 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
         run: |
-          $IMAGE = "$env:DOCKER_USERNAME/shopee-autochat-bot:$env:IMAGE_TAG"
+          $DOCKER_USER = $env:DOCKER_USERNAME
+          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
+          $IMAGE = "$DOCKER_USER/shopee-autochat-bot:$env:IMAGE_TAG"
           echo "Building: $IMAGE"
           docker build -t "$IMAGE" ./bot
-          docker push "$IMAGE"
-          echo "Image pushed: $IMAGE"
+          if ($DOCKER_USER -ne "local") {
+            docker push "$IMAGE"
+            echo "Image pushed: $IMAGE"
+          } else {
+            echo "Skipping push: Docker Hub credentials not configured. Image built locally as $IMAGE"
+          }
 
   # ============================================
   # Job 3: Deploy Preview (HANYA saat PR)
@@ -152,6 +159,10 @@ jobs:
           # Hapus container preview lama
           try { docker rm -f shopee-bot-preview 2>$null } catch {}
 
+          $DOCKER_USER = $env:DOCKER_USERNAME
+          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
+          $IMAGE = "$DOCKER_USER/shopee-autochat-bot:$env:IMAGE_TAG"
+
           # Jalankan container preview (port 6081 supaya tidak bentrok dengan production)
           docker run -d `
             --name shopee-bot-preview `
@@ -163,7 +174,7 @@ jobs:
             -v "$PWD/bot-profile-preview:/data/shopee-profile" `
             -v "$PWD/logs-preview:/data/logs" `
             -p 6081:6080 `
-            "$env:DOCKER_USERNAME/shopee-autochat-bot:$env:IMAGE_TAG"
+            "$IMAGE"
 
           echo ""
           echo "Preview berhasil di-deploy!"
@@ -190,6 +201,9 @@ jobs:
           try { docker rm -f shopee-bot-preview 2>$null } catch {}
 
           # Deploy production via docker compose
+          $DOCKER_USER = $env:DOCKER_USERNAME
+          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
+          $env:DOCKER_USERNAME = $DOCKER_USER
           docker compose up -d --pull always
 
           # Bersihkan image lama
