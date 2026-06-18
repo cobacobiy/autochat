@@ -80,10 +80,10 @@ jobs:
       - name: Verify Python & Upgrade Pip
         run: |
           python --version
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip --break-system-packages
 
       - name: Install Linter
-        run: pip install ruff
+        run: pip install ruff --break-system-packages
 
       - name: Validasi Kode (Lint)
         run: ruff check bot/
