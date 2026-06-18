@@ -29,14 +29,18 @@ jobs:
           )
           $found = $false
           foreach ($path in $searchPaths) {
-            if (Test-Path "$path\python.exe") {
-              echo "$path" >> $env:GITHUB_PATH
-              if (Test-Path "$path\Scripts") {
-                echo "$path\Scripts" >> $env:GITHUB_PATH
+            try {
+              if (Test-Path "$path\python.exe" -ErrorAction Stop) {
+                echo "$path" >> $env:GITHUB_PATH
+                if (Test-Path "$path\Scripts" -ErrorAction Stop) {
+                  echo "$path\Scripts" >> $env:GITHUB_PATH
+                }
+                echo "Found Python at $path"
+                $found = $true
+                break
               }
-              echo "Found Python at $path"
-              $found = $true
-              break
+            } catch {
+              echo "Skipping $path due to access/permission restrictions."
             }
           }
           if (-not $found) {
