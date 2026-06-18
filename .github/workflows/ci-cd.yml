@@ -17,15 +17,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Locate and Add Python to PATH
+      - name: Locate or Install Python (Global)
         run: |
           $searchPaths = @(
-            "C:\Users\acers\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none",
-            "C:\Users\acers\AppData\Local\Python\pythoncore-3.14-64",
-            "C:\Python312",
             "C:\Python311",
+            "C:\Python312",
+            "C:\Program Files\Python311",
             "C:\Program Files\Python312",
-            "C:\Program Files\Python311"
+            "C:\Users\acers\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none",
+            "C:\Users\acers\AppData\Local\Python\pythoncore-3.14-64"
           )
           $found = $false
           foreach ($path in $searchPaths) {
@@ -43,9 +43,38 @@ jobs:
               echo "Skipping $path due to access/permission restrictions."
             }
           }
+
           if (-not $found) {
-            Write-Error "Could not find python.exe in standard search paths!"
-            exit 1
+            echo "Python not found. Initiating dynamic global installation..."
+            $version = "3.11.9"
+            $url = "https://www.python.org/ftp/python/$version/python-$version-amd64.exe"
+            $installer = "$env:TEMP\python-installer.exe"
+            
+            echo "Downloading Python $version from $url..."
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $url -OutFile $installer
+            
+            echo "Installing Python $version to C:\Python311..."
+            $arguments = "/quiet InstallAllUsers=1 TargetDir=C:\Python311 PrependPath=0 AssociateFiles=0 Shortcuts=0 Include_doc=0"
+            $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+            
+            if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+              Write-Error "Python installation failed with exit code $($process.ExitCode)"
+              exit 1
+            }
+            
+            echo "Python installed successfully."
+            
+            # Verify and add to path
+            if (Test-Path "C:\Python311\python.exe") {
+              echo "C:\Python311" >> $env:GITHUB_PATH
+              if (Test-Path "C:\Python311\Scripts") {
+                echo "C:\Python311\Scripts" >> $env:GITHUB_PATH
+              }
+            } else {
+              Write-Error "Python installation directory C:\Python311\python.exe not found after install!"
+              exit 1
+            }
           }
 
       - name: Verify Python & Upgrade Pip
