@@ -101,6 +101,7 @@ jobs:
             --shm-size=2g \
             -e HEADLESS=false \
             -e POLL_INTERVAL=10 \
+            -e VNC_PASSWORD=previewpass \
             -v ./bot-profile-preview:/data/shopee-profile \
             -v ./logs-preview:/data/logs \
             -p 6081:6080 \

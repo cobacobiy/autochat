@@ -1,5 +1,5 @@
 .git
 __pycache__
 *.pyc
-bot-profile
-logs
+bot-profile*
+logs*
