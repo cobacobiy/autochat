@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [ main ]
 
-defaults:
-  run:
-    shell: bash
 
 jobs:
   # ============================================
@@ -48,12 +45,13 @@ jobs:
       - name: Set Image Tag
         id: tag
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TAG="pr-${{ github.event.pull_request.number }}-$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)"
-          else
-            TAG="latest"
-          fi
-          echo "IMAGE_TAG=$TAG" >> $GITHUB_OUTPUT
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $sha = "${{ github.event.pull_request.head.sha }}".Substring(0,7)
+            $TAG = "pr-${{ github.event.pull_request.number }}-$sha"
+          } else {
+            $TAG = "latest"
+          }
+          echo "IMAGE_TAG=$TAG" >> $env:GITHUB_OUTPUT
           echo "📦 Image tag: $TAG"
 
       - name: Login to Docker Hub
@@ -67,7 +65,7 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
         run: |
-          IMAGE="$DOCKER_USERNAME/shopee-autochat-bot:$IMAGE_TAG"
+          $IMAGE = "$env:DOCKER_USERNAME/shopee-autochat-bot:$env:IMAGE_TAG"
           echo "🚀 Building: $IMAGE"
           docker build -t "$IMAGE" ./bot
           docker push "$IMAGE"
@@ -92,20 +90,20 @@ jobs:
           echo "🔍 Deploying PR #${{ github.event.pull_request.number }} preview..."
 
           # Hapus container preview lama
-          docker rm -f shopee-bot-preview 2>/dev/null || true
+          try { docker rm -f shopee-bot-preview 2>$null } catch {}
 
           # Jalankan container preview (port 6081 supaya tidak bentrok dengan production)
-          docker run -d \
-            --name shopee-bot-preview \
-            --restart unless-stopped \
-            --shm-size=2g \
-            -e HEADLESS=false \
-            -e POLL_INTERVAL=10 \
-            -e VNC_PASSWORD=previewpass \
-            -v ./bot-profile-preview:/data/shopee-profile \
-            -v ./logs-preview:/data/logs \
-            -p 6081:6080 \
-            "$DOCKER_USERNAME/shopee-autochat-bot:$IMAGE_TAG"
+          docker run -d `
+            --name shopee-bot-preview `
+            --restart unless-stopped `
+            --shm-size=2g `
+            -e HEADLESS=false `
+            -e POLL_INTERVAL=10 `
+            -e VNC_PASSWORD=previewpass `
+            -v "$PWD/bot-profile-preview:/data/shopee-profile" `
+            -v "$PWD/logs-preview:/data/logs" `
+            -p 6081:6080 `
+            "$env:DOCKER_USERNAME/shopee-autochat-bot:$env:IMAGE_TAG"
 
           echo ""
           echo "✅ Preview berhasil di-deploy!"
@@ -129,7 +127,7 @@ jobs:
           echo "🚀 Deploying shopee-autochat-bot:latest to production..."
 
           # Hapus container preview kalau masih jalan
-          docker rm -f shopee-bot-preview 2>/dev/null || true
+          try { docker rm -f shopee-bot-preview 2>$null } catch {}
 
           # Deploy production via docker compose
           docker compose up -d --pull always
