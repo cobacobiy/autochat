@@ -83,25 +83,32 @@ async def handle_unread_chats(page) -> int:
         except Exception as e:
             log.warning("Clicking 'Semua Chat' tab failed: %s", e)
 
-        # Debug DOM
+        # Debug DOM and Frames
         try:
-            debug_info = await page.evaluate("""() => {
-                const results = [];
-                const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes('leonman18'));
-                for (const el of elements) {
-                    if (el.childNodes.length === 1 || el.classList.length > 0) {
-                        let current = el;
-                        let path = [];
-                        while (current && path.length < 5) {
-                            path.push(current.tagName + '.' + [...current.classList].join('.'));
-                            current = current.parentElement;
+            log.info("Page frames count: %d", len(page.frames))
+            for i, f in enumerate(page.frames):
+                log.info("Frame #%d URL: %s, Name: %s", i, f.url, f.name)
+                try:
+                    debug_info = await f.evaluate("""() => {
+                        const results = [];
+                        const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes('leonman18'));
+                        for (const el of elements) {
+                            if (el.childNodes.length === 1 || el.classList.length > 0) {
+                                let current = el;
+                                let path = [];
+                                while (current && path.length < 5) {
+                                    path.push(current.tagName + '.' + [...current.classList].join('.'));
+                                    current = current.parentElement;
+                                }
+                                results.push(path.join(' < '));
+                            }
                         }
-                        results.push(path.join(' < '));
-                    }
-                }
-                return results.slice(0, 10);
-            }""")
-            log.info("DOM DEBUG: %s", debug_info)
+                        return results.slice(0, 5);
+                    }""")
+                    if debug_info:
+                        log.info("Frame #%d DOM DEBUG: %s", i, debug_info)
+                except Exception as fe:
+                    log.warning("Frame #%d eval failed: %s", i, fe)
         except Exception as e:
             log.warning("DOM Debug failed: %s", e)
 
