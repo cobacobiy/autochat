@@ -83,10 +83,10 @@ jobs:
           python -m pip install --upgrade pip --break-system-packages
 
       - name: Install Linter
-        run: pip install ruff --break-system-packages
+        run: python -m pip install ruff --break-system-packages
 
       - name: Validasi Kode (Lint)
-        run: ruff check bot/
+        run: python -m ruff check bot/
 
   # ============================================
   # Job 2: Build & Push Docker Image
