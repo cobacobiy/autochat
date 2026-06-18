@@ -281,6 +281,15 @@ async def run_bot():
 
     os.makedirs(PROFILE_DIR, exist_ok=True)
 
+    # Clean up stale Chromium lock file if present to prevent launch errors
+    lock_file = os.path.join(PROFILE_DIR, "SingletonLock")
+    if os.path.islink(lock_file) or os.path.exists(lock_file):
+        try:
+            log.info("Removing stale Chromium lock file: %s", lock_file)
+            os.unlink(lock_file)
+        except Exception as e:
+            log.warning("Failed to remove stale lock file: %s", e)
+
     # Set up graceful shutdown event and signals
     shutdown_event = asyncio.Event()
 
@@ -331,18 +340,28 @@ async def run_bot():
         # Check if already logged in
         if "login" in page.url or "auth" in page.url:
             log.warning(
-                "Not logged in! Please log in manually via VNC/headful mode, "
-                "then restart the bot. Profile will be saved at: %s",
+                "Not logged in! Please log in manually via VNC/headful mode. "
+                "The bot will automatically resume once login is detected. "
+                "Profile will be saved at: %s",
                 PROFILE_DIR,
             )
-            # Keep browser open so user can log in via VNC
-            try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=300)
-            except asyncio.TimeoutError:
-                pass
-            log.info("Closing persistent Chromium context...")
-            await context.close()
-            return
+            # Poll page URL to detect when user logs in
+            login_detected = False
+            for _ in range(120): # 120 * 5s = 600s = 10 minutes
+                if shutdown_event.is_set():
+                    break
+                await page.wait_for_timeout(5000)
+                # Check if we are logged in now
+                if "login" not in page.url and "auth" not in page.url:
+                    log.info("Login detected! Starting polling loop...")
+                    login_detected = True
+                    await page.wait_for_timeout(3000)
+                    break
+            
+            if not login_detected:
+                log.info("Closing persistent Chromium context...")
+                await context.close()
+                return
 
         log.info("Logged in — entering polling loop (every %ds)", POLL_INTERVAL_SECONDS)
 
