@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
-SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/portal/chat")
+SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 
 AUTO_REPLIES = {
