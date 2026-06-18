@@ -83,8 +83,33 @@ async def handle_unread_chats(page) -> int:
         except Exception as e:
             log.warning("Clicking 'Semua Chat' tab failed: %s", e)
 
-        # Wait for the chat list to be present
-        await page.wait_for_selector("[data-testid='chat-list-item'], .chat-list-item, [class*='chat-list-item']", timeout=10_000)
+        # Debug DOM
+        try:
+            debug_info = await page.evaluate("""() => {
+                const results = [];
+                const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes('leonman18'));
+                for (const el of elements) {
+                    if (el.childNodes.length === 1 || el.classList.length > 0) {
+                        let current = el;
+                        let path = [];
+                        while (current && path.length < 5) {
+                            path.push(current.tagName + '.' + [...current.classList].join('.'));
+                            current = current.parentElement;
+                        }
+                        results.push(path.join(' < '));
+                    }
+                }
+                return results.slice(0, 10);
+            }""")
+            log.info("DOM DEBUG: %s", debug_info)
+        except Exception as e:
+            log.warning("DOM Debug failed: %s", e)
+
+        # Wait for the chat list to be present (short timeout for debug)
+        try:
+            await page.wait_for_selector("[data-testid='chat-list-item'], .chat-list-item, [class*='chat-list-item']", timeout=3000)
+        except Exception as wait_err:
+            log.warning("Wait for selector timed out, proceeding anyway: %s", wait_err)
 
         # Collect all chat items in the sidebar
         chat_items = await page.query_selector_all(
