@@ -58,13 +58,42 @@ async def handle_unread_chats(page) -> int:
     """
     processed = 0
     try:
+        # 1. Ensure top dropdown is set to "Chat Pembeli"
+        try:
+            trigger_penjual = page.locator("text=Chat Penjual").first
+            trigger_pembeli = page.locator("text=Chat Pembeli").first
+            
+            if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
+                log.info("Detected 'Chat Penjual' active. Clicking to switch to 'Chat Pembeli'...")
+                await trigger_penjual.click()
+                await page.wait_for_timeout(1000)
+                option_pembeli = page.locator("text=Chat Pembeli").last
+                await option_pembeli.click()
+                await page.wait_for_timeout(2000)
+        except Exception as e:
+            log.warning("Dropdown check/switch failed: %s", e)
+
+        # 2. Click "Semua Chat" tab if visible to ensure we process all chats
+        try:
+            semua_chat_tab = page.locator("text=Semua Chat").first
+            if await semua_chat_tab.is_visible():
+                log.info("Clicking 'Semua Chat' tab...")
+                await semua_chat_tab.click()
+                await page.wait_for_timeout(1000)
+        except Exception as e:
+            log.warning("Clicking 'Semua Chat' tab failed: %s", e)
+
         # Wait for the chat list to be present
         await page.wait_for_selector("[data-testid='chat-list-item'], .chat-list-item", timeout=10_000)
 
         # Collect unread threads (those with an unread badge)
         unread_items = await page.query_selector_all(
             "[data-testid='chat-list-item']:has(.unread-badge), "
-            ".chat-list-item:has(.unread-count)"
+            "[data-testid='chat-list-item']:has(.unread-count), "
+            "[data-testid='chat-list-item']:has([class*='unread']), "
+            ".chat-list-item:has(.unread-badge), "
+            ".chat-list-item:has(.unread-count), "
+            ".chat-list-item:has([class*='unread'])"
         )
 
         if not unread_items:
@@ -77,12 +106,46 @@ async def handle_unread_chats(page) -> int:
                 await item.click()
                 await page.wait_for_timeout(1500)
 
-                # Read the latest buyer message
-                messages = await page.query_selector_all(".message-bubble--buyer, [data-testid='buyer-message']")
-                if not messages:
+                # Identify message bubbles in history
+                buyer_selector = (
+                    ".message-bubble--buyer, "
+                    "[data-testid='buyer-message'], "
+                    ".message-bubble.buyer, "
+                    "[class*='message-bubble'][class*='buyer'], "
+                    "[class*='message-row'][class*='buyer']"
+                )
+                seller_selector = (
+                    ".message-bubble--seller, "
+                    "[data-testid='seller-message'], "
+                    ".message-bubble.seller, "
+                    ".message-bubble.me, "
+                    "[class*='message-bubble'][class*='seller'], "
+                    "[class*='message-row'][class*='seller'], "
+                    "[class*='message-bubble'][class*='me'], "
+                    "[class*='message-row'][class*='me']"
+                )
+
+                buyer_messages = await page.query_selector_all(buyer_selector)
+                seller_messages = await page.query_selector_all(seller_selector)
+
+                if not buyer_messages:
+                    log.info("No buyer messages found in history, skipping.")
                     continue
 
-                last_msg_el = messages[-1]
+                # Prevent duplicate reply: if seller has already replied after the last buyer message, skip.
+                if seller_messages:
+                    last_buyer = buyer_messages[-1]
+                    last_seller = seller_messages[-1]
+                    is_seller_last = await page.evaluate(
+                        "(nodes) => (nodes.buyer.compareDocumentPosition(nodes.seller) & 4) > 0",
+                        {"buyer": last_buyer, "seller": last_seller}
+                    )
+                    if is_seller_last:
+                        log.info("Seller already replied to the latest message. Skipping.")
+                        continue
+
+                # Read the latest buyer message
+                last_msg_el = buyer_messages[-1]
                 last_msg_text = await last_msg_el.inner_text()
                 log.info("Buyer message: %s", last_msg_text[:100])
 
@@ -90,7 +153,7 @@ async def handle_unread_chats(page) -> int:
 
                 # Type and send reply
                 input_box = await page.query_selector(
-                    "[data-testid='chat-input'], .chat-input textarea, textarea.chat-input__textarea"
+                    "[data-testid='chat-input'], .chat-input textarea, textarea.chat-input__textarea, textarea"
                 )
                 if not input_box:
                     log.warning("Could not find chat input box — Shopee may have changed its DOM.")
@@ -100,6 +163,22 @@ async def handle_unread_chats(page) -> int:
                 await input_box.fill(reply_text)
                 await page.keyboard.press("Enter")
                 await page.wait_for_timeout(800)
+
+                # Click send button if still visible and exists
+                try:
+                    send_button = page.locator(
+                        "button:has-text('Kirim'), "
+                        "button:has-text('Send'), "
+                        "[data-testid='send-button'], "
+                        "button.send-btn, "
+                        "button[class*='send']"
+                    ).first
+                    if await send_button.is_visible():
+                        log.info("Clicking the Send/Kirim button...")
+                        await send_button.click()
+                        await page.wait_for_timeout(800)
+                except Exception as send_err:
+                    log.debug("Send button click failed or not found (sent by Enter): %s", send_err)
 
                 log.info("Replied: %s", reply_text[:80])
                 processed += 1
