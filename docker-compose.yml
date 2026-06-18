@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  shopee-bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    image: shopee-autochat-bot:latest
+    container_name: shopee-bot
+
+    restart: unless-stopped
+
+    environment:
+      # Set to "false" when using VNC for manual login, "true" for headless ops
+      - HEADLESS=false
+      - PROFILE_DIR=/data/shopee-profile
+      - POLL_INTERVAL=5           # seconds between chat poll cycles
+
+    volumes:
+      # Persist Chromium session so login survives container restarts
+      - ./bot-profile:/data/shopee-profile
+      # Persist logs on the host for easy tailing
+      - ./logs:/data/logs
+
+    ports:
+      # noVNC web interface — open http://localhost:6080 to view/control the browser
+      - "6080:6080"
+
+    # Resource limits (adjust to your server)
+    deploy:
+      resources:
+        limits:
+          memory: 1g
