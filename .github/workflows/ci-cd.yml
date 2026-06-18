@@ -17,6 +17,33 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Locate and Add Python to PATH
+        run: |
+          $searchPaths = @(
+            "C:\Users\acers\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none",
+            "C:\Users\acers\AppData\Local\Python\pythoncore-3.14-64",
+            "C:\Python312",
+            "C:\Python311",
+            "C:\Program Files\Python312",
+            "C:\Program Files\Python311"
+          )
+          $found = $false
+          foreach ($path in $searchPaths) {
+            if (Test-Path "$path\python.exe") {
+              echo "$path" >> $env:GITHUB_PATH
+              if (Test-Path "$path\Scripts") {
+                echo "$path\Scripts" >> $env:GITHUB_PATH
+              }
+              echo "Found Python at $path"
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Error "Could not find python.exe in standard search paths!"
+            exit 1
+          }
+
       - name: Verify Python & Upgrade Pip
         run: |
           python --version
