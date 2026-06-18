@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   shopee-bot:
     build:
@@ -7,6 +5,7 @@ services:
       dockerfile: Dockerfile
     image: shopee-autochat-bot:latest
     container_name: shopee-bot
+    shm_size: 2gb
 
     restart: unless-stopped
 

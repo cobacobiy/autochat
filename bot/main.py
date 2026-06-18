@@ -7,24 +7,27 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime
 
 from playwright.async_api import async_playwright
 
-# ── Logging setup ──────────────────────────────────────────────────────────────
+# ── Logging & Directory setup ──────────────────────────────────────────────────
+LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "bot.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/data/logs/bot.log"),
+        logging.FileHandler(LOG_FILE),
     ],
 )
 log = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
-SHOPEE_CHAT_URL = "https://seller.shopee.co.id/portal/chat"
+SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/portal/chat")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 
 AUTO_REPLIES = {
@@ -38,13 +41,14 @@ DEFAULT_REPLY = "Halo kak! Terima kasih sudah menghubungi kami. Tim kami akan se
 
 
 # ── Bot logic ──────────────────────────────────────────────────────────────────
-async def get_auto_reply(message: str) -> str:
+def get_auto_reply(message: str) -> str:
     """Match message keywords to canned replies."""
     msg_lower = message.lower()
     for keyword, reply in AUTO_REPLIES.items():
         if keyword in msg_lower:
             return reply
     return DEFAULT_REPLY
+
 
 
 async def handle_unread_chats(page) -> int:
@@ -82,7 +86,7 @@ async def handle_unread_chats(page) -> int:
                 last_msg_text = await last_msg_el.inner_text()
                 log.info("Buyer message: %s", last_msg_text[:100])
 
-                reply_text = await get_auto_reply(last_msg_text)
+                reply_text = get_auto_reply(last_msg_text)
 
                 # Type and send reply
                 input_box = await page.query_selector(

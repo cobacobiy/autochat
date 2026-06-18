@@ -6,12 +6,16 @@ on:
   pull_request:
     branches: [ main ]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # ============================================
   # Job 1: Lint & Validasi Python
   # ============================================
   validate:
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, windows]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -34,7 +38,7 @@ jobs:
   # ============================================
   build:
     needs: validate
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, windows]
     outputs:
       image_tag: ${{ steps.tag.outputs.IMAGE_TAG }}
     steps:
@@ -75,7 +79,7 @@ jobs:
   deploy-preview:
     needs: build
     if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, windows]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -97,8 +101,8 @@ jobs:
             --shm-size=2g \
             -e HEADLESS=false \
             -e POLL_INTERVAL=10 \
-            -v "$(pwd)/bot-profile-preview:/data/shopee-profile" \
-            -v "$(pwd)/logs-preview:/data/logs" \
+            -v ./bot-profile-preview:/data/shopee-profile \
+            -v ./logs-preview:/data/logs \
             -p 6081:6080 \
             "$DOCKER_USERNAME/shopee-autochat-bot:$IMAGE_TAG"
 
@@ -112,7 +116,7 @@ jobs:
   deploy:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, windows]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
