@@ -1,0 +1,136 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ============================================
+  # Job 1: Lint & Validasi Python
+  # ============================================
+  validate:
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Linter
+        run: pip install ruff
+
+      - name: Validasi Kode (Lint)
+        run: ruff check bot/
+
+  # ============================================
+  # Job 2: Build & Push Docker Image
+  # - PR        → tag: pr-<number>-<sha7>
+  # - Push main → tag: latest
+  # ============================================
+  build:
+    needs: validate
+    runs-on: [self-hosted, linux]
+    outputs:
+      image_tag: ${{ steps.tag.outputs.IMAGE_TAG }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Image Tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TAG="pr-${{ github.event.pull_request.number }}-$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)"
+          else
+            TAG="latest"
+          fi
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "📦 Image tag: $TAG"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker Build & Push
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
+        run: |
+          IMAGE="$DOCKER_USERNAME/shopee-autochat-bot:$IMAGE_TAG"
+          echo "🚀 Building: $IMAGE"
+          docker build -t "$IMAGE" ./bot
+          docker push "$IMAGE"
+          echo "✅ Image pushed: $IMAGE"
+
+  # ============================================
+  # Job 3: Deploy Preview (HANYA saat PR)
+  # ============================================
+  deploy-preview:
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy Preview Container
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+        run: |
+          echo "🔍 Deploying PR #${{ github.event.pull_request.number }} preview..."
+
+          # Hapus container preview lama
+          docker rm -f shopee-bot-preview 2>/dev/null || true
+
+          # Jalankan container preview (port 6081 supaya tidak bentrok dengan production)
+          docker run -d \
+            --name shopee-bot-preview \
+            --restart unless-stopped \
+            --shm-size=2g \
+            -e HEADLESS=false \
+            -e POLL_INTERVAL=10 \
+            -v "$(pwd)/bot-profile-preview:/data/shopee-profile" \
+            -v "$(pwd)/logs-preview:/data/logs" \
+            -p 6081:6080 \
+            "$DOCKER_USERNAME/shopee-autochat-bot:$IMAGE_TAG"
+
+          echo ""
+          echo "✅ Preview berhasil di-deploy!"
+          echo "🖥️  noVNC: http://<SERVER_IP>:6081"
+
+  # ============================================
+  # Job 4: Deploy Production (HANYA push ke main)
+  # ============================================
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          echo "🚀 Deploying shopee-autochat-bot:latest to production..."
+
+          # Hapus container preview kalau masih jalan
+          docker rm -f shopee-bot-preview 2>/dev/null || true
+
+          # Deploy production via docker compose
+          docker compose up -d --pull always
+
+          # Bersihkan image lama
+          docker image prune -f
+
+          echo "✅ Deploy production selesai!"
+          echo "🖥️  noVNC: http://<SERVER_IP>:6080"
