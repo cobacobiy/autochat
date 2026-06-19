@@ -41,7 +41,7 @@ AUTO_REPLIES = {
 DEFAULT_REPLY = "Halo kak! Terima kasih sudah menghubungi kami. Tim kami akan segera membalas 😊"
 
 
-# ── Bot logic ──────────────────────────────────────────────────────────────────
+# ── Bot logic ────────────────────────────────────────
 def get_auto_reply(message: str) -> str:
     """Match message keywords to canned replies."""
     msg_lower = message.lower()
@@ -58,6 +58,25 @@ async def handle_unread_chats(page) -> int:
     """
     processed = 0
     try:
+        # 0. Dismiss "Restore pages?" dialog if present
+        try:
+            restore_btn = page.locator("button:has-text('Restore'), button:has-text('Pulihkan')").first
+            if await restore_btn.is_visible(timeout=1000):
+                log.info("Dismissing 'Restore pages?' dialog...")
+                await restore_btn.click()
+                await page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+        try:
+            close_btn = page.locator("[aria-label='Close'], button:has-text('×'), .close-button").first
+            if await close_btn.is_visible(timeout=1000):
+                log.info("Closing restore pages pop-up via close button...")
+                await close_btn.click()
+                await page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
         # 1. Ensure top dropdown is set to "Chat Pembeli"
         try:
             trigger_penjual = page.locator("text=Chat Penjual").first
@@ -79,9 +98,39 @@ async def handle_unread_chats(page) -> int:
             if await semua_chat_tab.is_visible():
                 log.info("Clicking 'Semua Chat' tab...")
                 await semua_chat_tab.click()
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(2000)
         except Exception as e:
             log.warning("Clicking 'Semua Chat' tab failed: %s", e)
+
+        # Ensure chat list section header is expanded (e.g. "Semua Pembeli" or "Belum Dibalas")
+        try:
+            # Check if there are any chat items visible in the DOM.
+            items_found = await page.evaluate("""() => {
+                const divs = [...document.querySelectorAll('div')];
+                return divs.some(div => {
+                    const text = div.textContent || '';
+                    if (/\\b\\d{2}:\\d{2}\\b/.test(text) && text.length < 300) {
+                        const rect = div.getBoundingClientRect();
+                        return rect.height > 40 && rect.height < 120 && rect.width > 100;
+                    }
+                    return false;
+                });
+            }""")
+            
+            if not items_found:
+                semua_pembeli = page.locator("text=Semua Pembeli").first
+                if await semua_pembeli.is_visible():
+                    log.info("No chat items detected. Clicking 'Semua Pembeli' section to expand...")
+                    await semua_pembeli.click()
+                    await page.wait_for_timeout(2000)
+                else:
+                    belum_dibalas = page.locator("text=Belum Dibalas").first
+                    if await belum_dibalas.is_visible():
+                        log.info("No chat items detected. Clicking 'Belum Dibalas' section to expand...")
+                        await belum_dibalas.click()
+                        await page.wait_for_timeout(2000)
+        except Exception as e:
+            log.warning("Expanding sections failed: %s", e)
 
         # Debug DOM and Frames
         try:
@@ -112,28 +161,77 @@ async def handle_unread_chats(page) -> int:
         except Exception as e:
             log.warning("DOM Debug failed: %s", e)
 
-        # Wait for the chat list to be present (short timeout for debug)
+        # Take a screenshot for visual debugging
         try:
-            await page.wait_for_selector("[data-testid='chat-list-item'], .chat-list-item, [class*='chat-list-item']", timeout=3000)
-        except Exception as wait_err:
-            log.warning("Wait for selector timed out, proceeding anyway: %s", wait_err)
+            screenshot_path = os.path.join(LOG_DIR, "screenshot.png")
+            await page.screenshot(path=screenshot_path)
+            log.info("Saved debug screenshot to: %s", screenshot_path)
+        except Exception as ss_err:
+            log.warning("Failed to save debug screenshot: %s", ss_err)
 
-        # Collect all chat items in the sidebar
-        chat_items = await page.query_selector_all(
-            "[data-testid='chat-list-item'], "
-            ".chat-list-item, "
-            "[class*='chat-list-item'], "
-            "[class*='conversation-item']"
-        )
+        # Extract all chat items using class-agnostic size-and-timestamp-based evaluation
+        chat_items_info = []
+        try:
+            elements_handle = await page.evaluate_handle("""() => {
+                const getChatItems = () => {
+                    const allDivs = document.querySelectorAll('div');
+                    const items = [];
+                    for (const div of allDivs) {
+                        const text = div.textContent || '';
+                        const hasTimestamp = /\\b\\d{2}:\\d{2}\\b/.test(text) || 
+                                             text.includes('Yesterday') || 
+                                             text.includes('Kemarin') ||
+                                             /\\b\\d{1,2}[/-]\\d{1,2}\\b/.test(text);
+                        if (hasTimestamp && text.length < 300) {
+                            const rect = div.getBoundingClientRect();
+                            if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
+                                items.push(div);
+                            }
+                        }
+                    }
+                    return items.filter(item => !items.some(other => other !== item && item.contains(other)));
+                };
+                return getChatItems();
+            }""")
+            
+            num_items = await page.evaluate("arr => arr.length", elements_handle)
+            log.info("Found %d chat item(s) in sidebar list", num_items)
+        except Exception as e:
+            log.error("Failed to extract chat items via JS: %s", e)
+            num_items = 0
 
-        if not chat_items:
-            return 0
-
-        log.info("Found %d chat item(s) in sidebar list", len(chat_items))
-
-        for index, item in enumerate(chat_items):
+        # Process chats one by one by re-fetching elements at each index (avoids detachment errors)
+        for index in range(num_items):
             try:
-                # 3. Read sidebar item properties to determine if we should skip
+                elements_handle = await page.evaluate_handle("""() => {
+                    const allDivs = document.querySelectorAll('div');
+                    const items = [];
+                    for (const div of allDivs) {
+                        const text = div.textContent || '';
+                        const hasTimestamp = /\\b\\d{2}:\\d{2}\\b/.test(text) || 
+                                             text.includes('Yesterday') || 
+                                             text.includes('Kemarin') ||
+                                             /\\b\\d{1,2}[/-]\\d{1,2}\\b/.test(text);
+                        if (hasTimestamp && text.length < 300) {
+                            const rect = div.getBoundingClientRect();
+                            if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
+                                items.push(div);
+                            }
+                        }
+                    }
+                    return items.filter(item => !items.some(other => other !== item && item.contains(other)));
+                };""")
+                
+                fresh_length = await page.evaluate("arr => arr.length", elements_handle)
+                if index >= fresh_length:
+                    log.warning("Chat list shortened during processing, index %d out of bounds (%d items left)", index, fresh_length)
+                    break
+                    
+                item_handle = await page.evaluate_handle(f"(arr) => arr[{index}]", elements_handle)
+                item = item_handle.as_element()
+                if not item:
+                    continue
+                    
                 item_text = await item.inner_text()
                 
                 # Check for unread badge or indicator
@@ -155,85 +253,154 @@ async def handle_unread_chats(page) -> int:
                         any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
                         DEFAULT_REPLY.lower()[:15] in preview_lower
                     ):
-                        # Seller appears to have replied, skip clicking this chat
+                        log.info("Skipping chat #%d: already replied by seller", index + 1)
                         continue
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
+                await item.scroll_into_view_if_needed()
                 await item.click()
                 await page.wait_for_timeout(2000)
 
-                # 4. Identify message bubbles in history
-                message_selector = (
-                    ".message-bubble, "
-                    "[class*='message-bubble'], "
-                    "[class*='message-row'], "
-                    "[class*='message-item']"
-                )
-                messages = await page.query_selector_all(message_selector)
+                # Extract chat history from the middle panel using JS
+                chat_history = await page.evaluate("""() => {
+                    const messageContainers = [...document.querySelectorAll('div')].filter(el => {
+                        const className = el.className || '';
+                        const style = window.getComputedStyle(el);
+                        return (style.overflowY === 'scroll' || style.overflowY === 'auto' || className.includes('message') || className.includes('chat-content') || className.includes('conversation'))
+                            && el.querySelectorAll('[class*="message"], [class*="bubble"]').length > 0;
+                    });
+                    
+                    let bestContainer = null;
+                    let maxBubbles = 0;
+                    for (const container of messageContainers) {
+                        const bubbles = container.querySelectorAll('[class*="message"], [class*="bubble"]');
+                        if (bubbles.length > maxBubbles) {
+                            maxBubbles = bubbles.length;
+                            bestContainer = container;
+                        }
+                    }
+                    
+                    if (!bestContainer) {
+                        bestContainer = document.body;
+                    }
+                    
+                    const bubbles = bestContainer.querySelectorAll('[class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble');
+                    
+                    const history = [];
+                    for (const b of bubbles) {
+                        const text = (b.textContent || '').trim();
+                        if (!text) continue;
+                        
+                        const style = window.getComputedStyle(b);
+                        const rect = b.getBoundingClientRect();
+                        
+                        let isSeller = false;
+                        let current = b;
+                        for (let depth = 0; depth < 4; depth++) {
+                            if (!current) break;
+                            const curStyle = window.getComputedStyle(current);
+                            const curClass = current.className || '';
+                            if (
+                                curClass.includes('seller') || 
+                                curClass.includes('me') || 
+                                curClass.includes('right') || 
+                                curClass.includes('send') ||
+                                curStyle.justifyContent === 'flex-end' ||
+                                curStyle.alignItems === 'flex-end' ||
+                                curStyle.alignSelf === 'flex-end' ||
+                                curStyle.float === 'right' ||
+                                current.getAttribute('style')?.includes('right')
+                            ) {
+                                isSeller = true;
+                                break;
+                            }
+                            current = current.parentElement;
+                        }
+                        
+                        history.push({
+                            text: text,
+                            isSeller: isSeller
+                        });
+                    }
+                    
+                    const cleanHistory = [];
+                    for (const item of history) {
+                        if (cleanHistory.length > 0) {
+                            const last = cleanHistory[cleanHistory.length - 1];
+                            if (last.text.includes(item.text) && last.isSeller === item.isSeller) {
+                                continue;
+                            }
+                            if (item.text.includes(last.text) && last.isSeller === item.isSeller) {
+                                cleanHistory[cleanHistory.length - 1] = item;
+                                continue;
+                            }
+                        }
+                        cleanHistory.push(item);
+                    }
+                    
+                    return cleanHistory;
+                }""")
 
-                if not messages:
-                    log.info("No message bubbles found in history, skipping.")
+                # Fallback to selector-based extraction if JS history returns empty
+                if not chat_history:
+                    log.warning("JS history extraction returned empty, trying fallback message selector...")
+                    message_selector = (
+                        ".message-bubble, "
+                        "[class*='message-bubble'], "
+                        "[class*='message-row'], "
+                        "[class*='message-item']"
+                    )
+                    messages = await page.query_selector_all(message_selector)
+                    for msg in messages:
+                        msg_text = await msg.inner_text()
+                        msg_class = await msg.get_attribute("class") or ""
+                        msg_style = await msg.get_attribute("style") or ""
+                        
+                        is_seller = (
+                            "seller" in msg_class.lower() or 
+                            "me" in msg_class.lower() or 
+                            "right" in msg_class.lower() or 
+                            "right" in msg_style.lower()
+                        )
+                        if not is_seller:
+                            parent = await msg.query_selector("xpath=..")
+                            if parent:
+                                parent_class = await parent.get_attribute("class") or ""
+                                if "seller" in parent_class.lower() or "me" in parent_class.lower() or "right" in parent_class.lower():
+                                    is_seller = True
+                        chat_history.append({
+                            "text": msg_text,
+                            "isSeller": is_seller
+                        })
+
+                if not chat_history:
+                    log.info("No message history found, skipping.")
                     continue
 
-                # 5. Check if the last message in history is from the seller
-                last_msg = messages[-1]
-                last_text = await last_msg.inner_text()
+                last_msg = chat_history[-1]
+                last_msg_text = last_msg["text"]
+                last_msg_is_seller = last_msg["isSeller"]
                 
-                is_last_seller = False
-                last_class = await last_msg.get_attribute("class") or ""
-                last_style = await last_msg.get_attribute("style") or ""
-                if (
-                    "seller" in last_class.lower() or 
-                    "me" in last_class.lower() or 
-                    "right" in last_class.lower() or 
-                    "right" in last_style.lower()
-                ):
-                    is_last_seller = True
-                else:
-                    # Check parent classes
-                    parent = await last_msg.query_selector("xpath=..")
-                    if parent:
-                        parent_class = await parent.get_attribute("class") or ""
-                        if "seller" in parent_class.lower() or "me" in parent_class.lower() or "right" in parent_class.lower():
-                            is_last_seller = True
-
-                is_assistant_ai = "[asisten ai" in last_text.lower()
+                is_assistant_ai = "[asisten ai" in last_msg_text.lower() or "asisten ai toko" in last_msg_text.lower()
                 
                 # If the last message is from the seller AND it's not Assistant AI, skip
-                if is_last_seller and not is_assistant_ai:
+                if last_msg_is_seller and not is_assistant_ai:
                     log.info("Seller already replied to the latest message. Skipping.")
                     continue
 
-                # 6. Extract all buyer messages to generate the reply from
-                buyer_messages = []
-                for msg in messages:
-                    msg_class = await msg.get_attribute("class") or ""
-                    msg_style = await msg.get_attribute("style") or ""
-                    is_msg_seller = (
-                        "seller" in msg_class.lower() or 
-                        "me" in msg_class.lower() or 
-                        "right" in msg_class.lower() or 
-                        "right" in msg_style.lower()
-                    )
-                    if not is_msg_seller:
-                        parent = await msg.query_selector("xpath=..")
-                        if parent:
-                            parent_class = await parent.get_attribute("class") or ""
-                            if "seller" in parent_class.lower() or "me" in parent_class.lower() or "right" in parent_class.lower():
-                                is_msg_seller = True
-                    
-                    if not is_msg_seller:
-                        buyer_messages.append(msg)
+                # Extract the latest buyer message to generate the reply from
+                buyer_message = ""
+                for msg in reversed(chat_history):
+                    if not msg["isSeller"] and not ("[asisten ai" in msg["text"].lower() or "asisten ai toko" in msg["text"].lower()):
+                        buyer_message = msg["text"]
+                        break
+                
+                if not buyer_message:
+                    # Fallback to the last message if no buyer message was identified
+                    buyer_message = last_msg_text
 
-                # Get latest buyer message text
-                if buyer_messages:
-                    last_buyer_msg = buyer_messages[-1]
-                    last_msg_text = await last_buyer_msg.inner_text()
-                else:
-                    last_msg_text = last_text
-
-                log.info("Buyer message context: %s", last_msg_text[:100])
-                reply_text = get_auto_reply(last_msg_text)
+                log.info("Buyer message context: %s", buyer_message[:100])
+                reply_text = get_auto_reply(buyer_message)
 
                 # 7. Type and send reply
                 input_box = await page.query_selector(
@@ -277,7 +444,6 @@ async def handle_unread_chats(page) -> int:
     except Exception as exc:
         log.error("Error fetching chat list: %s", exc)
 
-    return processed
 
 
 async def run_bot():
