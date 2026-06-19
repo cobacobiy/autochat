@@ -44,7 +44,9 @@ GET_CHAT_ITEMS_JS = r"""() => {
         if (hasTimestamp && text.length < 300) {
             const rect = div.getBoundingClientRect();
             if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                items.push(div);
+                if (rect.top >= 0 && rect.bottom <= window.innerHeight) {
+                    items.push(div);
+                }
             }
         }
     }
@@ -57,6 +59,8 @@ AUTO_REPLIES = {
     "ongkir": "Ongkir dihitung otomatis oleh Shopee sesuai lokasi kakak.",
     "cod": "Maaf, belum tersedia COD untuk saat ini.",
     "garansi": "Produk bergaransi 30 hari jika ada kerusakan dari pabrik.",
+    "pengiriman": "Penjaringan Jakarta Utara",
+    "dari mana": "Penjaringan Jakarta Utara",
 }
 DEFAULT_REPLY = "Halo kak! Terima kasih sudah menghubungi kami. Tim kami akan segera membalas 😊"
 
@@ -69,6 +73,13 @@ def get_auto_reply(message: str) -> str:
         if keyword in msg_lower:
             return reply
     return DEFAULT_REPLY
+
+
+def is_assistant_ai_msg(text: str) -> bool:
+    """Check if the text indicates it's from Assistant AI."""
+    t = text.lower()
+    return "[asisten ai" in t or "asisten ai toko" in t or "ai asistent toko" in t or "asistent ai" in t
+
 
 
 async def handle_unread_chats(page) -> int:
@@ -258,7 +269,7 @@ async def handle_unread_chats(page) -> int:
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
                 # await item.scroll_into_view_if_needed()
-                await item.click()
+                await item.evaluate("node => node.click()")
                 await page.wait_for_timeout(2000)
 
                 # --- Handle "Lihat History Chat" button ---
@@ -346,6 +357,18 @@ async def handle_unread_chats(page) -> int:
                             current = current.parentElement;
                         }
                         
+                        // Position-based check: if bubble center is on the right side of the container, it's seller
+                        if (!isSeller && bestContainer) {
+                            const containerRect = bestContainer.getBoundingClientRect();
+                            const bubbleRect = b.getBoundingClientRect();
+                            if (containerRect.width > 0) {
+                                const relativeLeft = (bubbleRect.left - containerRect.left) / containerRect.width;
+                                if (relativeLeft > 0.4) {
+                                    isSeller = true;
+                                }
+                            }
+                        }
+                        
                         history.push({
                             text: text,
                             isSeller: isSeller
@@ -399,6 +422,20 @@ async def handle_unread_chats(page) -> int:
                                 parent_classes = set(re.split(r'[\s\-_]', parent_class.lower()))
                                 if "seller" in parent_classes or "me" in parent_classes or "right" in parent_classes:
                                     is_seller = True
+                        
+                        if not is_seller:
+                            try:
+                                bbox = await msg.bounding_box()
+                                if bbox:
+                                    container = await page.query_selector("[class*='chat-content'], [class*='conversation']")
+                                    if container:
+                                        c_bbox = await container.bounding_box()
+                                        if c_bbox and c_bbox['width'] > 0:
+                                            relative_left = (bbox['x'] - c_bbox['x']) / c_bbox['width']
+                                            if relative_left > 0.4:
+                                                is_seller = True
+                            except Exception:
+                                pass
                         chat_history.append({
                             "text": msg_text,
                             "isSeller": is_seller
@@ -412,10 +449,18 @@ async def handle_unread_chats(page) -> int:
                 last_msg_text = last_msg["text"]
                 last_msg_is_seller = last_msg["isSeller"]
                 
-                is_assistant_ai = "[asisten ai" in last_msg_text.lower() or "asisten ai toko" in last_msg_text.lower()
+                is_assistant_ai = is_assistant_ai_msg(last_msg_text)
                 
-                # If the last message is from the seller AND it's not Assistant AI, skip
-                if last_msg_is_seller and not is_assistant_ai:
+                # Check if the last message is an image
+                is_image = (
+                    not last_msg_text.strip() or
+                    "[gambar]" in last_msg_text.lower() or
+                    "gambar" == last_msg_text.strip().lower() or
+                    "[image]" in last_msg_text.lower()
+                )
+
+                # If the last message is from the seller AND it's not Assistant AI AND it's not an image, skip
+                if last_msg_is_seller and not is_assistant_ai and not is_image:
                     log.info("Seller already replied to the latest message. Skipping.")
                     continue
 
@@ -425,7 +470,7 @@ async def handle_unread_chats(page) -> int:
                     buyer_message = history_message
                 else:
                     for msg in reversed(chat_history):
-                        if not msg["isSeller"] and not ("[asisten ai" in msg["text"].lower() or "asisten ai toko" in msg["text"].lower()):
+                        if not msg["isSeller"] and not is_assistant_ai_msg(msg["text"]):
                             buyer_message = msg["text"]
                             break
                     
@@ -438,6 +483,8 @@ async def handle_unread_chats(page) -> int:
                     reply_text = "Ada yang bisa dibantu?"
                 else:
                     reply_text = get_auto_reply(buyer_message)
+                    if reply_text == DEFAULT_REPLY:
+                        log.warning("👉 UNANSWERED BUYER MESSAGE (Need manual reply): %s", buyer_message)
 
                 # 7. Type and send reply
                 input_box = await page.query_selector(
