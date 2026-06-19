@@ -257,9 +257,41 @@ async def handle_unread_chats(page) -> int:
                         continue
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
-                await item.scroll_into_view_if_needed()
+                # await item.scroll_into_view_if_needed()
                 await item.click()
                 await page.wait_for_timeout(2000)
+
+                # --- Handle "Lihat History Chat" button ---
+                history_message = ""
+                try:
+                    history_btn = page.locator("button:has-text('Lihat History Chat'), text='Lihat History Chat'").first
+                    try:
+                        await history_btn.wait_for(state="visible", timeout=1500)
+                        has_history = True
+                    except Exception:
+                        has_history = False
+
+                    if has_history:
+                        log.info("Found 'Lihat History Chat' button. Clicking it...")
+                        await history_btn.click()
+                        await page.wait_for_timeout(1000)
+
+                        popup = page.locator("[role='dialog'], .shopee-modal, .modal, .popup").first
+                        if await popup.is_visible():
+                            history_message = await popup.inner_text()
+                            log.info("Extracted text from history popup: %s", history_message.replace('\n', ' | ')[:150])
+
+                            close_btn = popup.locator("button:has-text('Tutup'), [aria-label='Close'], button:has-text('×'), button:has-text('Close'), .shopee-modal__close").first
+                            if await close_btn.is_visible():
+                                await close_btn.click()
+                                await page.wait_for_timeout(1000)
+                            else:
+                                page_close_btn = page.locator("[role='dialog'] button:has-text('Tutup'), [role='dialog'] [aria-label='Close'], [role='dialog'] button:has-text('×'), [role='dialog'] button:has-text('Close')").first
+                                if await page_close_btn.is_visible():
+                                    await page_close_btn.click()
+                                    await page.wait_for_timeout(1000)
+                except Exception as e:
+                    log.warning("Handling 'Lihat History Chat' failed: %s", e)
 
                 # Extract chat history from the middle panel using JS
                 chat_history = await page.evaluate(r"""() => {
@@ -389,17 +421,23 @@ async def handle_unread_chats(page) -> int:
 
                 # Extract the latest buyer message to generate the reply from
                 buyer_message = ""
-                for msg in reversed(chat_history):
-                    if not msg["isSeller"] and not ("[asisten ai" in msg["text"].lower() or "asisten ai toko" in msg["text"].lower()):
-                        buyer_message = msg["text"]
-                        break
-                
-                if not buyer_message:
-                    # Fallback to the last message if no buyer message was identified
-                    buyer_message = last_msg_text
+                if history_message:
+                    buyer_message = history_message
+                else:
+                    for msg in reversed(chat_history):
+                        if not msg["isSeller"] and not ("[asisten ai" in msg["text"].lower() or "asisten ai toko" in msg["text"].lower()):
+                            buyer_message = msg["text"]
+                            break
+                    
+                    if not buyer_message:
+                        # Fallback to the last message if no buyer message was identified
+                        buyer_message = last_msg_text
 
                 log.info("Buyer message context: %s", buyer_message[:100])
-                reply_text = get_auto_reply(buyer_message)
+                if is_assistant_ai:
+                    reply_text = "Ada yang bisa dibantu?"
+                else:
+                    reply_text = get_auto_reply(buyer_message)
 
                 # 7. Type and send reply
                 input_box = await page.query_selector(
