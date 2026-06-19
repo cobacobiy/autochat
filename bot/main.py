@@ -6,6 +6,7 @@ Runs as a daemon using Playwright persistent context for session persistence.
 import asyncio
 import logging
 import os
+import re
 import signal
 import sys
 
@@ -30,6 +31,25 @@ log = logging.getLogger(__name__)
 PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
 SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
+
+GET_CHAT_ITEMS_JS = """() => {
+    const allDivs = document.querySelectorAll('div');
+    const items = [];
+    for (const div of allDivs) {
+        const text = div.textContent || '';
+        const hasTimestamp = /\\b\\d{2}:\\d{2}\\b/.test(text) || 
+                             text.includes('Yesterday') || 
+                             text.includes('Kemarin') ||
+                             /\\b\\d{1,2}[/-]\\d{1,2}\\b/.test(text);
+        if (hasTimestamp && text.length < 300) {
+            const rect = div.getBoundingClientRect();
+            if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
+                items.push(div);
+            }
+        }
+    }
+    return items.filter(item => !items.some(other => other !== item && item.contains(other)));
+}"""
 
 AUTO_REPLIES = {
     "harga": "Harga sudah tertera di halaman produk. Silakan cek ya kak 😊",
@@ -109,7 +129,7 @@ async def handle_unread_chats(page) -> int:
                 const divs = [...document.querySelectorAll('div')];
                 return divs.some(div => {
                     const text = div.textContent || '';
-                    if (/\\b\\d{2}:\\d{2}\\b/.test(text) && text.length < 300) {
+                    if (/\b\d{2}:\d{2}\b/.test(text) && text.length < 300) {
                         const rect = div.getBoundingClientRect();
                         return rect.height > 40 && rect.height < 120 && rect.width > 100;
                     }
@@ -132,106 +152,84 @@ async def handle_unread_chats(page) -> int:
         except Exception as e:
             log.warning("Expanding sections failed: %s", e)
 
-        # Debug DOM and Frames
-        try:
-            log.info("Page frames count: %d", len(page.frames))
-            for i, f in enumerate(page.frames):
-                log.info("Frame #%d URL: %s, Name: %s", i, f.url, f.name)
-                try:
-                    debug_info = await f.evaluate("""() => {
-                        const results = [];
-                        const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes('leonman18'));
-                        for (const el of elements) {
-                            if (el.childNodes.length === 1 || el.classList.length > 0) {
-                                let current = el;
-                                let path = [];
-                                while (current && path.length < 5) {
-                                    path.push(current.tagName + '.' + [...current.classList].join('.'));
-                                    current = current.parentElement;
+        # Debug DOM and Frames (only when DEBUG environment variable is set)
+        if os.getenv("DEBUG"):
+            try:
+                log.info("Page frames count: %d", len(page.frames))
+                for i, f in enumerate(page.frames):
+                    log.info("Frame #%d URL: %s, Name: %s", i, f.url, f.name)
+                    try:
+                        debug_info = await f.evaluate("""() => {
+                            const results = [];
+                            const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes('leonman18'));
+                            for (const el of elements) {
+                                if (el.childNodes.length === 1 || el.classList.length > 0) {
+                                    let current = el;
+                                    let path = [];
+                                    while (current && path.length < 5) {
+                                        path.push(current.tagName + '.' + [...current.classList].join('.'));
+                                        current = current.parentElement;
+                                    }
+                                    results.push(path.join(' < '));
                                 }
-                                results.push(path.join(' < '));
                             }
-                        }
-                        return results.slice(0, 5);
-                    }""")
-                    if debug_info:
-                        log.info("Frame #%d DOM DEBUG: %s", i, debug_info)
-                except Exception as fe:
-                    log.warning("Frame #%d eval failed: %s", i, fe)
-        except Exception as e:
-            log.warning("DOM Debug failed: %s", e)
+                            return results.slice(0, 5);
+                        }""")
+                        if debug_info:
+                            log.info("Frame #%d DOM DEBUG: %s", i, debug_info)
+                    except Exception as fe:
+                        log.warning("Frame #%d eval failed: %s", i, fe)
+            except Exception as e:
+                log.warning("DOM Debug failed: %s", e)
 
-        # Take a screenshot for visual debugging
-        try:
-            screenshot_path = os.path.join(LOG_DIR, "screenshot.png")
-            await page.screenshot(path=screenshot_path)
-            log.info("Saved debug screenshot to: %s", screenshot_path)
-        except Exception as ss_err:
-            log.warning("Failed to save debug screenshot: %s", ss_err)
+            # Take a screenshot for visual debugging
+            try:
+                screenshot_path = os.path.join(LOG_DIR, "screenshot.png")
+                await page.screenshot(path=screenshot_path)
+                log.info("Saved debug screenshot to: %s", screenshot_path)
+            except Exception as ss_err:
+                log.warning("Failed to save debug screenshot: %s", ss_err)
 
-        # Extract all chat items using class-agnostic size-and-timestamp-based evaluation
-        chat_items_info = []
+        # Extract usernames/identifiers for all chat items first to avoid mismatch after clicks
+        chat_identifiers = []
         try:
-            elements_handle = await page.evaluate_handle("""() => {
-                const getChatItems = () => {
-                    const allDivs = document.querySelectorAll('div');
-                    const items = [];
-                    for (const div of allDivs) {
-                        const text = div.textContent || '';
-                        const hasTimestamp = /\\b\\d{2}:\\d{2}\\b/.test(text) || 
-                                             text.includes('Yesterday') || 
-                                             text.includes('Kemarin') ||
-                                             /\\b\\d{1,2}[/-]\\d{1,2}\\b/.test(text);
-                        if (hasTimestamp && text.length < 300) {
-                            const rect = div.getBoundingClientRect();
-                            if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                                items.push(div);
-                            }
-                        }
-                    }
-                    return items.filter(item => !items.some(other => other !== item && item.contains(other)));
-                };
-                return getChatItems();
-            }""")
-            
+            elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
             num_items = await page.evaluate("arr => arr.length", elements_handle)
-            log.info("Found %d chat item(s) in sidebar list", num_items)
+            for i in range(num_items):
+                item_handle = await page.evaluate_handle(f"(arr) => arr[{i}]", elements_handle)
+                item = item_handle.as_element()
+                if item:
+                    text = await item.inner_text()
+                    lines = [line.strip() for line in text.split('\n') if line.strip()]
+                    if lines:
+                        username = lines[0]
+                        chat_identifiers.append(username)
+            log.info("Found %d chat item(s) in sidebar list: %s", len(chat_identifiers), chat_identifiers)
         except Exception as e:
             log.error("Failed to extract chat items via JS: %s", e)
-            num_items = 0
 
-        # Process chats one by one by re-fetching elements at each index (avoids detachment errors)
-        for index in range(num_items):
+        # Process chats one by one by finding the element for each username to avoid detachment and mismatch
+        for index, username in enumerate(chat_identifiers):
             try:
-                elements_handle = await page.evaluate_handle("""() => {
-                    const allDivs = document.querySelectorAll('div');
-                    const items = [];
-                    for (const div of allDivs) {
-                        const text = div.textContent || '';
-                        const hasTimestamp = /\\b\\d{2}:\\d{2}\\b/.test(text) || 
-                                             text.includes('Yesterday') || 
-                                             text.includes('Kemarin') ||
-                                             /\\b\\d{1,2}[/-]\\d{1,2}\\b/.test(text);
-                        if (hasTimestamp && text.length < 300) {
-                            const rect = div.getBoundingClientRect();
-                            if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                                items.push(div);
-                            }
-                        }
-                    }
-                    return items.filter(item => !items.some(other => other !== item && item.contains(other)));
-                };""")
-                
+                elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
                 fresh_length = await page.evaluate("arr => arr.length", elements_handle)
-                if index >= fresh_length:
-                    log.warning("Chat list shortened during processing, index %d out of bounds (%d items left)", index, fresh_length)
-                    break
-                    
-                item_handle = await page.evaluate_handle(f"(arr) => arr[{index}]", elements_handle)
-                item = item_handle.as_element()
-                if not item:
+                
+                target_item = None
+                for i in range(fresh_length):
+                    item_handle = await page.evaluate_handle(f"(arr) => arr[{i}]", elements_handle)
+                    item = item_handle.as_element()
+                    if item:
+                        text = await item.inner_text()
+                        lines = [line.strip() for line in text.split('\n') if line.strip()]
+                        if lines and lines[0] == username:
+                            target_item = item
+                            break
+                            
+                if not target_item:
+                    log.warning("Could not find chat item for user '%s' anymore", username)
                     continue
                     
+                item = target_item
                 item_text = await item.inner_text()
                 
                 # Check for unread badge or indicator
@@ -302,7 +300,7 @@ async def handle_unread_chats(page) -> int:
                             const curClass = current.className || '';
                             if (
                                 curClass.includes('seller') || 
-                                curClass.includes('me') || 
+                                curClass.split(/[\\s-_]/).includes('me') || 
                                 curClass.includes('right') || 
                                 curClass.includes('send') ||
                                 curStyle.justifyContent === 'flex-end' ||
@@ -356,17 +354,19 @@ async def handle_unread_chats(page) -> int:
                         msg_class = await msg.get_attribute("class") or ""
                         msg_style = await msg.get_attribute("style") or ""
                         
+                        msg_classes = set(re.split(r'[\s\-_]', msg_class.lower()))
                         is_seller = (
-                            "seller" in msg_class.lower() or 
-                            "me" in msg_class.lower() or 
-                            "right" in msg_class.lower() or 
+                            "seller" in msg_classes or 
+                            "me" in msg_classes or 
+                            "right" in msg_classes or 
                             "right" in msg_style.lower()
                         )
                         if not is_seller:
                             parent = await msg.query_selector("xpath=..")
                             if parent:
                                 parent_class = await parent.get_attribute("class") or ""
-                                if "seller" in parent_class.lower() or "me" in parent_class.lower() or "right" in parent_class.lower():
+                                parent_classes = set(re.split(r'[\s\-_]', parent_class.lower()))
+                                if "seller" in parent_classes or "me" in parent_classes or "right" in parent_classes:
                                     is_seller = True
                         chat_history.append({
                             "text": msg_text,
@@ -443,6 +443,8 @@ async def handle_unread_chats(page) -> int:
 
     except Exception as exc:
         log.error("Error fetching chat list: %s", exc)
+
+    return processed
 
 
 
