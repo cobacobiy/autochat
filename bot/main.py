@@ -32,15 +32,15 @@ PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
 SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 
-GET_CHAT_ITEMS_JS = """() => {
+GET_CHAT_ITEMS_JS = r"""() => {
     const allDivs = document.querySelectorAll('div');
     const items = [];
     for (const div of allDivs) {
         const text = div.textContent || '';
-        const hasTimestamp = /\\b\\d{2}:\\d{2}\\b/.test(text) || 
+        const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
                              text.includes('Yesterday') || 
                              text.includes('Kemarin') ||
-                             /\\b\\d{1,2}[/-]\\d{1,2}\\b/.test(text);
+                             /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
         if (hasTimestamp && text.length < 300) {
             const rect = div.getBoundingClientRect();
             if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
@@ -125,7 +125,7 @@ async def handle_unread_chats(page) -> int:
         # Ensure chat list section header is expanded (e.g. "Semua Pembeli" or "Belum Dibalas")
         try:
             # Check if there are any chat items visible in the DOM.
-            items_found = await page.evaluate("""() => {
+            items_found = await page.evaluate(r"""() => {
                 const divs = [...document.querySelectorAll('div')];
                 return divs.some(div => {
                     const text = div.textContent || '';
@@ -156,29 +156,31 @@ async def handle_unread_chats(page) -> int:
         if os.getenv("DEBUG"):
             try:
                 log.info("Page frames count: %d", len(page.frames))
+                debug_target = os.getenv("DEBUG_TARGET", "")
                 for i, f in enumerate(page.frames):
                     log.info("Frame #%d URL: %s, Name: %s", i, f.url, f.name)
-                    try:
-                        debug_info = await f.evaluate("""() => {
-                            const results = [];
-                            const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes('leonman18'));
-                            for (const el of elements) {
-                                if (el.childNodes.length === 1 || el.classList.length > 0) {
-                                    let current = el;
-                                    let path = [];
-                                    while (current && path.length < 5) {
-                                        path.push(current.tagName + '.' + [...current.classList].join('.'));
-                                        current = current.parentElement;
+                    if debug_target:
+                        try:
+                            debug_info = await f.evaluate(r"""(target) => {
+                                const results = [];
+                                const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes(target));
+                                for (const el of elements) {
+                                    if (el.childNodes.length === 1 || el.classList.length > 0) {
+                                        let current = el;
+                                        let path = [];
+                                        while (current && path.length < 5) {
+                                            path.push(current.tagName + '.' + [...current.classList].join('.'));
+                                            current = current.parentElement;
+                                        }
+                                        results.push(path.join(' < '));
                                     }
-                                    results.push(path.join(' < '));
                                 }
-                            }
-                            return results.slice(0, 5);
-                        }""")
-                        if debug_info:
-                            log.info("Frame #%d DOM DEBUG: %s", i, debug_info)
-                    except Exception as fe:
-                        log.warning("Frame #%d eval failed: %s", i, fe)
+                                return results.slice(0, 5);
+                            }""", debug_target)
+                            if debug_info:
+                                log.info("Frame #%d DOM DEBUG (matching '%s'): %s", i, debug_target, debug_info)
+                        except Exception as fe:
+                            log.warning("Frame #%d eval failed: %s", i, fe)
             except Exception as e:
                 log.warning("DOM Debug failed: %s", e)
 
@@ -260,7 +262,7 @@ async def handle_unread_chats(page) -> int:
                 await page.wait_for_timeout(2000)
 
                 # Extract chat history from the middle panel using JS
-                chat_history = await page.evaluate("""() => {
+                chat_history = await page.evaluate(r"""() => {
                     const messageContainers = [...document.querySelectorAll('div')].filter(el => {
                         const className = el.className || '';
                         const style = window.getComputedStyle(el);
@@ -289,9 +291,6 @@ async def handle_unread_chats(page) -> int:
                         const text = (b.textContent || '').trim();
                         if (!text) continue;
                         
-                        const style = window.getComputedStyle(b);
-                        const rect = b.getBoundingClientRect();
-                        
                         let isSeller = false;
                         let current = b;
                         for (let depth = 0; depth < 4; depth++) {
@@ -300,7 +299,7 @@ async def handle_unread_chats(page) -> int:
                             const curClass = current.className || '';
                             if (
                                 curClass.includes('seller') || 
-                                curClass.split(/[\\s-_]/).includes('me') || 
+                                curClass.split(/[\s-_]/).includes('me') || 
                                 curClass.includes('right') || 
                                 curClass.includes('send') ||
                                 curStyle.justifyContent === 'flex-end' ||
@@ -477,7 +476,7 @@ async def run_bot():
         try:
             loop.add_signal_handler(
                 getattr(signal, signame),
-                lambda: ask_exit(signame)
+                lambda sn=signame: ask_exit(sn)
             )
         except NotImplementedError:
             # Fallback for Windows where loop.add_signal_handler is not implemented
