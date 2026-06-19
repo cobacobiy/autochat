@@ -44,7 +44,7 @@ GET_CHAT_ITEMS_JS = r"""() => {
         if (hasTimestamp && text.length < 300) {
             const rect = div.getBoundingClientRect();
             if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                if (rect.top >= 0 && rect.bottom <= window.innerHeight) {
+                if (rect.top < window.innerHeight && rect.bottom > 0) {
                     items.push(div);
                 }
             }
@@ -140,7 +140,11 @@ async def handle_unread_chats(page) -> int:
                 const divs = [...document.querySelectorAll('div')];
                 return divs.some(div => {
                     const text = div.textContent || '';
-                    if (/\b\d{2}:\d{2}\b/.test(text) && text.length < 300) {
+                    const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
+                                         text.includes('Yesterday') || 
+                                         text.includes('Kemarin') ||
+                                         /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
+                    if (hasTimestamp && text.length < 300) {
                         const rect = div.getBoundingClientRect();
                         return rect.height > 40 && rect.height < 120 && rect.width > 100;
                     }
@@ -357,13 +361,14 @@ async def handle_unread_chats(page) -> int:
                             current = current.parentElement;
                         }
                         
-                        // Position-based check: if bubble center is on the right side of the container, it's seller
+                        // Position-based check: if bubble center is on the right side of the container or aligns right, it's seller
                         if (!isSeller && bestContainer) {
                             const containerRect = bestContainer.getBoundingClientRect();
                             const bubbleRect = b.getBoundingClientRect();
                             if (containerRect.width > 0) {
                                 const relativeLeft = (bubbleRect.left - containerRect.left) / containerRect.width;
-                                if (relativeLeft > 0.4) {
+                                const relativeRight = (containerRect.right - bubbleRect.right) / containerRect.width;
+                                if (relativeLeft > 0.4 || relativeRight < 0.1) {
                                     isSeller = true;
                                 }
                             }
@@ -432,7 +437,8 @@ async def handle_unread_chats(page) -> int:
                                         c_bbox = await container.bounding_box()
                                         if c_bbox and c_bbox['width'] > 0:
                                             relative_left = (bbox['x'] - c_bbox['x']) / c_bbox['width']
-                                            if relative_left > 0.4:
+                                            relative_right = (c_bbox['x'] + c_bbox['width'] - (bbox['x'] + bbox['width'])) / c_bbox['width']
+                                            if relative_left > 0.4 or relative_right < 0.1:
                                                 is_seller = True
                             except Exception:
                                 pass
