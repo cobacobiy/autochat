@@ -350,6 +350,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             if (bgColor && (
                                 bgColor.includes('238') ||
                                 bgColor.includes('255, 87') ||
+                                bgColor.includes('ee4d2d') ||
                                 b.closest('[class*="seller"]') ||
                                 b.closest('[class*="right"]') ||
                                 b.closest('[class*="send"]')
