@@ -10,6 +10,7 @@ import re
 import signal
 import sys
 import time
+import httpx
 
 from playwright.async_api import async_playwright
 
@@ -32,6 +33,7 @@ log = logging.getLogger(__name__)
 PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
 SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 GET_CHAT_ITEMS_JS = r"""() => {
     const allDivs = document.querySelectorAll('div');
@@ -74,6 +76,26 @@ def get_auto_reply(message: str) -> str:
         if keyword in msg_lower:
             return reply
     return DEFAULT_REPLY
+
+
+async def get_ai_reply_ollama(buyer_message: str) -> str:
+    """Generate reply using Ollama."""
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(f"{OLLAMA_URL}/api/generate", json={
+                "model": "phi3:mini",
+                "prompt": f"Balas pesan pembeli Shopee ini dengan ramah dan singkat dalam Bahasa Indonesia: {buyer_message}",
+                "stream": False
+            })
+            if resp.status_code == 200:
+                reply = resp.json().get("response", "").strip()
+                if reply:
+                    return reply
+            log.warning("Ollama returned status code: %s", resp.status_code)
+    except Exception as e:
+        log.warning("Ollama error: %s", e)
+    
+    return get_auto_reply(buyer_message)  # fallback
 
 
 def is_assistant_ai_msg(text: str) -> bool:
@@ -484,7 +506,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 if is_assistant_ai:
                     reply_text = "Ada yang bisa dibantu?"
                 else:
-                    reply_text = get_auto_reply(buyer_message)
+                    reply_text = await get_ai_reply_ollama(buyer_message)
                     if reply_text == DEFAULT_REPLY:
                         log.warning("👉 UNANSWERED BUYER MESSAGE (Need manual reply): %s", buyer_message)
 

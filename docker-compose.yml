@@ -20,12 +20,16 @@ services:
       - HEADLESS=false
       - PROFILE_DIR=/data/shopee-profile
       - POLL_INTERVAL=5           # seconds between chat poll cycles
+      - OLLAMA_URL=http://host.docker.internal:11434
 
     volumes:
       # Persist Chromium session so login survives container restarts
       - shopee-bot-profile:/data/shopee-profile
       # Persist logs on the host for easy tailing
       - shopee-bot-logs:/data/logs
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     ports:
       # noVNC web interface — open http://localhost:6080 to view/control the browser
