@@ -9,6 +9,7 @@ import os
 import re
 import signal
 import sys
+import time
 
 from playwright.async_api import async_playwright
 
@@ -342,6 +343,21 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             }
                         }
                         
+                        // Color-based check: seller bubbles often have orange/brand-colored backgrounds
+                        if (!isSeller) {
+                            const bubbleStyle = window.getComputedStyle(b);
+                            const bgColor = bubbleStyle.backgroundColor;
+                            if (bgColor && (
+                                bgColor.includes('238') ||
+                                bgColor.includes('255, 87') ||
+                                b.closest('[class*="seller"]') ||
+                                b.closest('[class*="right"]') ||
+                                b.closest('[class*="send"]')
+                            )) {
+                                isSeller = true;
+                            }
+                        }
+                        
                         history.push({
                             text: text,
                             isSeller: isSeller
@@ -472,40 +488,124 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         log.warning("👉 UNANSWERED BUYER MESSAGE (Need manual reply): %s", buyer_message)
 
                 # 7. Type and send reply
-                input_box = await page.query_selector(
-                    "[data-testid='chat-input'], "
-                    ".chat-input textarea, "
-                    "textarea.chat-input__textarea, "
-                    "textarea, "
-                    ".chat-input [contenteditable='true'], "
-                    "[class*='chat'] [contenteditable='true']"
-                )
+                log.info("=== REPLY ATTEMPT for user '%s' ===", username)
+                log.info("Reply text: %s", reply_text[:80])
+
+                # Find input box — prioritize contenteditable in chat area
+                input_box = None
+                input_sel_used = "none"
+
+                # Strategy 1: Specific contenteditable selectors in chat panel
+                ce_selectors = [
+                    "[data-testid='chat-input'] [contenteditable='true']",
+                    ".chat-input [contenteditable='true']",
+                    "[class*='chat-input'] [contenteditable='true']",
+                    "[class*='composer'] [contenteditable='true']",
+                    "[class*='editor'] [contenteditable='true']",
+                ]
+                for sel in ce_selectors:
+                    input_box = await page.query_selector(sel)
+                    if input_box:
+                        input_sel_used = sel
+                        break
+
+                # Strategy 2: Fallback — find all contenteditable, pick bottommost
+                if not input_box:
+                    all_editable = await page.query_selector_all("[contenteditable='true']")
+                    if all_editable:
+                        best = None
+                        best_y = -1
+                        for el in all_editable:
+                            try:
+                                bbox = await el.bounding_box()
+                                if bbox and bbox['y'] > best_y:
+                                    best_y = bbox['y']
+                                    best = el
+                            except Exception:
+                                pass
+                        if best:
+                            input_box = best
+                            input_sel_used = f"position-fallback (y={best_y})"
+
+                # Strategy 3: Last resort — textarea
+                if not input_box:
+                    input_box = await page.query_selector("textarea")
+                    if input_box:
+                        input_sel_used = "textarea-fallback"
+
                 if not input_box:
                     log.warning("Could not find chat input box — Shopee may have changed its DOM.")
+                    try:
+                        fail_path = os.path.join(LOG_DIR, f"no_input_{username}_{int(time.time())}.png")
+                        await page.screenshot(path=fail_path)
+                        log.warning("Saved no-input screenshot: %s", fail_path)
+                    except Exception:
+                        pass
                     continue
 
+                log.info("Found input box via: %s", input_sel_used)
+
+                # Click and focus the input box
                 await input_box.click()
-                await input_box.fill(reply_text)
+                await page.wait_for_timeout(300)
+
+                # Detect element type to choose the right input method
+                tag_name = await input_box.evaluate("el => el.tagName.toLowerCase()")
+                log.info("Input box tag: %s, visible: %s", tag_name, await input_box.is_visible())
+
+                if tag_name in ("input", "textarea"):
+                    # Standard input — fill() works
+                    await input_box.fill(reply_text)
+                else:
+                    # contenteditable div — must use keyboard.type()
+                    await input_box.evaluate("el => { el.textContent = ''; el.focus(); }")
+                    await page.wait_for_timeout(200)
+                    await page.keyboard.type(reply_text, delay=30)
+
+                await page.wait_for_timeout(300)
+
+                # Send: try Enter key first
                 await page.keyboard.press("Enter")
                 await page.wait_for_timeout(1000)
 
-                # Click send button if still visible and exists
-                try:
-                    send_button = page.locator(
-                        "button:has-text('Kirim'), "
-                        "button:has-text('Send'), "
-                        "[data-testid='send-button'], "
-                        "button.send-btn, "
-                        "button[class*='send']"
-                    ).first
-                    if await send_button.is_visible():
-                        log.info("Clicking the Send/Kirim button...")
-                        await send_button.click()
-                        await page.wait_for_timeout(800)
-                except Exception as send_err:
-                    log.debug("Send button click failed or not found (sent by Enter): %s", send_err)
+                # Verify if the message was sent (input box should be empty)
+                input_text_after = await input_box.evaluate(
+                    "el => (el.value || el.textContent || '').trim()"
+                )
 
-                log.info("Replied successfully: %s", reply_text[:80])
+                if input_text_after:
+                    # Enter didn't work — try clicking the Send/Kirim button
+                    log.info("Enter didn't send message (input still has text), trying Send button...")
+                    try:
+                        send_button = page.locator(
+                            "button:has-text('Kirim'), "
+                            "button:has-text('Send'), "
+                            "[data-testid='send-button'], "
+                            "button.send-btn, "
+                            "button[class*='send'], "
+                            "[class*='send'] button, "
+                            "[class*='composer'] button"
+                        ).first
+                        if await send_button.is_visible(timeout=2000):
+                            await send_button.click()
+                            await page.wait_for_timeout(800)
+                            log.info("Sent via Send button click")
+                        else:
+                            log.warning("Send button not visible either")
+                    except Exception as send_err:
+                        log.warning("Send button click failed: %s", send_err)
+
+                    # Take a failure screenshot for debugging
+                    try:
+                        fail_path = os.path.join(LOG_DIR, f"send_fail_{username}_{int(time.time())}.png")
+                        await page.screenshot(path=fail_path)
+                        log.warning("Saved send-failure screenshot: %s", fail_path)
+                    except Exception:
+                        pass
+                else:
+                    log.info("=== REPLY RESULT: SUCCESS (sent via Enter) ===")
+
+                log.info("Replied to '%s': %s", username, reply_text[:80])
                 replied_cache.add(cache_key)
                 processed += 1
 
