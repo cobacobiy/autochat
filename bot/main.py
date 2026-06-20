@@ -44,7 +44,7 @@ GET_CHAT_ITEMS_JS = r"""() => {
         if (hasTimestamp && text.length < 300) {
             const rect = div.getBoundingClientRect();
             if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                if (rect.top < window.innerHeight && rect.bottom > 0) {
+                if (rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth * 0.4) {
                     items.push(div);
                 }
             }
@@ -82,7 +82,7 @@ def is_assistant_ai_msg(text: str) -> bool:
 
 
 
-async def handle_unread_chats(page) -> int:
+async def handle_unread_chats(page, replied_cache: set) -> int:
     """
     Find unread and Assistant AI chats, and reply to each one.
     Returns the number of chats processed.
@@ -251,7 +251,7 @@ async def handle_unread_chats(page) -> int:
                 
                 # Check for unread badge or indicator
                 has_unread = await item.query_selector(
-                    ".unread-badge, .unread-count, [class*='unread'], [class*='badge']"
+                    ".unread-badge, .unread-count, [class*='unread']"
                 )
                 
                 # Check if preview text contains AI indicator
@@ -275,38 +275,6 @@ async def handle_unread_chats(page) -> int:
                 # await item.scroll_into_view_if_needed()
                 await item.evaluate("node => node.click()")
                 await page.wait_for_timeout(2000)
-
-                # --- Handle "Lihat History Chat" button ---
-                history_message = ""
-                try:
-                    history_btn = page.locator("button:has-text('Lihat History Chat'), text='Lihat History Chat'").first
-                    try:
-                        await history_btn.wait_for(state="visible", timeout=1500)
-                        has_history = True
-                    except Exception:
-                        has_history = False
-
-                    if has_history:
-                        log.info("Found 'Lihat History Chat' button. Clicking it...")
-                        await history_btn.click()
-                        await page.wait_for_timeout(1000)
-
-                        popup = page.locator("[role='dialog'], .shopee-modal, .modal, .popup").first
-                        if await popup.is_visible():
-                            history_message = await popup.inner_text()
-                            log.info("Extracted text from history popup: %s", history_message.replace('\n', ' | ')[:150])
-
-                            close_btn = popup.locator("button:has-text('Tutup'), [aria-label='Close'], button:has-text('×'), button:has-text('Close'), .shopee-modal__close").first
-                            if await close_btn.is_visible():
-                                await close_btn.click()
-                                await page.wait_for_timeout(1000)
-                            else:
-                                page_close_btn = page.locator("[role='dialog'] button:has-text('Tutup'), [role='dialog'] [aria-label='Close'], [role='dialog'] button:has-text('×'), [role='dialog'] button:has-text('Close')").first
-                                if await page_close_btn.is_visible():
-                                    await page_close_btn.click()
-                                    await page.wait_for_timeout(1000)
-                except Exception as e:
-                    log.warning("Handling 'Lihat History Chat' failed: %s", e)
 
                 # Extract chat history from the middle panel using JS
                 chat_history = await page.evaluate(r"""() => {
@@ -451,6 +419,14 @@ async def handle_unread_chats(page) -> int:
                     log.info("No message history found, skipping.")
                     continue
 
+                # Force isSeller validation (Bug 6)
+                for msg in chat_history:
+                    msg_lower = msg["text"].lower()
+                    if any(reply.lower() in msg_lower for reply in AUTO_REPLIES.values()):
+                        msg["isSeller"] = True
+                    if DEFAULT_REPLY.lower()[:30] in msg_lower:
+                        msg["isSeller"] = True
+
                 last_msg = chat_history[-1]
                 last_msg_text = last_msg["text"]
                 last_msg_is_seller = last_msg["isSeller"]
@@ -472,17 +448,20 @@ async def handle_unread_chats(page) -> int:
 
                 # Extract the latest buyer message to generate the reply from
                 buyer_message = ""
-                if history_message:
-                    buyer_message = history_message
-                else:
-                    for msg in reversed(chat_history):
-                        if not msg["isSeller"] and not is_assistant_ai_msg(msg["text"]):
-                            buyer_message = msg["text"]
-                            break
-                    
-                    if not buyer_message:
-                        # Fallback to the last message if no buyer message was identified
-                        buyer_message = last_msg_text
+                for msg in reversed(chat_history):
+                    if not msg["isSeller"] and not is_assistant_ai_msg(msg["text"]):
+                        buyer_message = msg["text"]
+                        break
+                
+                if not buyer_message:
+                    # Fallback to the last message if no buyer message was identified
+                    buyer_message = last_msg_text
+
+                # Bug 1: Double reply prevention
+                cache_key = f"{username}:{buyer_message[:50]}"
+                if cache_key in replied_cache:
+                    log.info("Already replied to '%s' with this message context, skipping.", username)
+                    continue
 
                 log.info("Buyer message context: %s", buyer_message[:100])
                 if is_assistant_ai:
@@ -498,7 +477,8 @@ async def handle_unread_chats(page) -> int:
                     ".chat-input textarea, "
                     "textarea.chat-input__textarea, "
                     "textarea, "
-                    "[contenteditable='true']"
+                    ".chat-input [contenteditable='true'], "
+                    "[class*='chat'] [contenteditable='true']"
                 )
                 if not input_box:
                     log.warning("Could not find chat input box — Shopee may have changed its DOM.")
@@ -526,6 +506,7 @@ async def handle_unread_chats(page) -> int:
                     log.debug("Send button click failed or not found (sent by Enter): %s", send_err)
 
                 log.info("Replied successfully: %s", reply_text[:80])
+                replied_cache.add(cache_key)
                 processed += 1
 
             except Exception as exc:
@@ -598,6 +579,8 @@ async def run_bot():
 
         page = context.pages[0] if context.pages else await context.new_page()
 
+        replied_cache = set()
+
         log.info("Navigating to Shopee Seller Chat…")
         await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
         await page.wait_for_timeout(3000)
@@ -646,7 +629,7 @@ async def run_bot():
                         continue
 
                 # Scan and reply to unread chats directly on the live page
-                count = await handle_unread_chats(page)
+                count = await handle_unread_chats(page, replied_cache)
                 if count:
                     log.info("Processed %d chat(s) this cycle", count)
                 else:
