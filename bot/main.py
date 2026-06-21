@@ -295,8 +295,11 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         continue
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
-                # await item.scroll_into_view_if_needed()
-                await item.evaluate("node => node.click()")
+                # Use Playwright native click to ensure React events fire correctly
+                try:
+                    await item.click(timeout=3000)
+                except Exception:
+                    await item.evaluate("node => node.click()")
                 await page.wait_for_timeout(2000)
 
                 # Extract chat history from the middle panel using JS
