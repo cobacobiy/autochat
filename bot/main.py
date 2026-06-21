@@ -38,14 +38,11 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 # ── AI Provider Configuration ──────────────────────────────────────────────────
 AI_PROVIDER = os.getenv("AI_PROVIDER", "").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 # Auto-detect provider if not explicitly configured but key is present
 if not AI_PROVIDER:
     if GEMINI_API_KEY:
         AI_PROVIDER = "gemini"
-    elif GROQ_API_KEY:
-        AI_PROVIDER = "groq"
     else:
         AI_PROVIDER = "ollama"
 
@@ -144,45 +141,11 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
     return get_auto_reply(buyer_message)  # fallback
 
 
-async def get_ai_reply_groq(buyer_message: str) -> str:
-    """Generate reply using Groq API."""
-    try:
-        if not GROQ_API_KEY:
-            log.warning("GROQ_API_KEY tidak dikonfigurasi, menggunakan auto-reply bawaan.")
-            return get_auto_reply(buyer_message)
-        
-        from groq import Groq
-        client = Groq(api_key=GROQ_API_KEY)
-        loop = asyncio.get_running_loop()
-        
-        def call_groq():
-            completion = client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[
-                    {"role": "system", "content": "Balas pesan pembeli Shopee dengan ramah, singkat, dan alami dalam Bahasa Indonesia. Jika pesan mengandung teks '[Pesan terakhir berupa gambar...]', maka fokuslah membalas pertanyaan pembeli yang ada di dalamnya."},
-                    {"role": "user", "content": buyer_message}
-                ],
-                temperature=0.7,
-                max_tokens=150,
-            )
-            return completion.choices[0].message.content
-            
-        reply = await loop.run_in_executor(None, call_groq)
-        if reply:
-            return reply.strip()
-    except Exception as e:
-        log.warning("Groq API error: %s", e)
-    return get_auto_reply(buyer_message)  # fallback
-
-
 async def get_ai_reply(buyer_message: str) -> str:
-    """Route the request to the active AI provider (gemini, groq, or ollama)."""
+    """Route the request to the active AI provider (gemini or ollama)."""
     if AI_PROVIDER == "gemini":
         log.info("Menggunakan Gemini API untuk membalas...")
         return await get_ai_reply_gemini(buyer_message)
-    elif AI_PROVIDER == "groq":
-        log.info("Menggunakan Groq API untuk membalas...")
-        return await get_ai_reply_groq(buyer_message)
     else:
         log.info("Menggunakan Ollama lokal untuk membalas...")
         return await get_ai_reply_ollama(buyer_message)
