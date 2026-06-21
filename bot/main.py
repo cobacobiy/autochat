@@ -36,6 +36,10 @@ POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 GET_CHAT_ITEMS_JS = r"""() => {
+    const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
+    if (cells.length > 0) {
+        return Array.from(cells);
+    }
     const allDivs = document.querySelectorAll('div');
     const items = [];
     for (const div of allDivs) {
@@ -44,7 +48,8 @@ GET_CHAT_ITEMS_JS = r"""() => {
                              text.includes('Yesterday') || 
                              text.includes('Kemarin') ||
                              /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-        if (hasTimestamp && text.length < 300) {
+        const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
+        if (hasTimestamp && text.length < 300 && isNotOrder) {
             const rect = div.getBoundingClientRect();
             if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
                 if (rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth * 0.4) {
@@ -99,9 +104,18 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
 
 
 def is_assistant_ai_msg(text: str) -> bool:
-    """Check if the text indicates it's from Assistant AI."""
+    """Check if the text indicates it's from Assistant AI or an Auto-Reply."""
     t = text.lower()
-    return "[asisten ai" in t or "asisten ai toko" in t or "ai asistent toko" in t or "asistent ai" in t
+    return (
+        "[asisten ai" in t or 
+        "asisten ai toko" in t or 
+        "ai asistent toko" in t or 
+        "asistent ai" in t or
+        "auto-reply" in t or
+        "auto reply" in t or
+        "kami akan segera membalas" in t or
+        "variant yg bisa di klik" in t
+    )
 
 
 
@@ -160,6 +174,8 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
         try:
             # Check if there are any chat items visible in the DOM.
             items_found = await page.evaluate(r"""() => {
+                const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
+                if (cells.length > 0) return true;
                 const divs = [...document.querySelectorAll('div')];
                 return divs.some(div => {
                     const text = div.textContent || '';
@@ -167,7 +183,8 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                                          text.includes('Yesterday') || 
                                          text.includes('Kemarin') ||
                                          /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-                    if (hasTimestamp && text.length < 300) {
+                    const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
+                    if (hasTimestamp && text.length < 300 && isNotOrder) {
                         const rect = div.getBoundingClientRect();
                         return rect.height > 40 && rect.height < 120 && rect.width > 100;
                     }
@@ -278,7 +295,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 )
                 
                 # Check if preview text contains AI indicator
-                has_ai = "[asisten ai" in item_text.lower()
+                has_ai = is_assistant_ai_msg(item_text)
                 
                 # Smart Skip: Skip clicking if it's already replied by the seller (us) 
                 # and doesn't contain an unread indicator or AI response.
@@ -289,7 +306,9 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         "anda:" in preview_lower or 
                         "you:" in preview_lower or
                         any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
-                        DEFAULT_REPLY.lower()[:15] in preview_lower
+                        DEFAULT_REPLY.lower()[:15] in preview_lower or
+                        "gambar" in preview_lower or
+                        "image" in preview_lower
                     ):
                         log.info("Skipping chat #%d: already replied by seller", index + 1)
                         continue
@@ -325,7 +344,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         bestContainer = document.body;
                     }
                     
-                    const bubbles = bestContainer.querySelectorAll('[class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble');
+                    const bubbles = bestContainer.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble');
                     
                     const history = [];
                     for (const b of bubbles) {
@@ -338,7 +357,9 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             if (!current) break;
                             const curStyle = window.getComputedStyle(current);
                             const curClass = current.className || '';
+                            const dataCy = current.getAttribute('data-cy') || '';
                             if (
+                                dataCy === 'webchat-message-send' ||
                                 curClass.includes('seller') || 
                                 curClass.split(/[\s-_]/).includes('me') || 
                                 curClass.includes('right') || 
@@ -350,6 +371,10 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                                 current.getAttribute('style')?.includes('right')
                             ) {
                                 isSeller = true;
+                                break;
+                            }
+                            if (dataCy === 'webchat-message-receive') {
+                                isSeller = false;
                                 break;
                             }
                             current = current.parentElement;
@@ -412,6 +437,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 if not chat_history:
                     log.warning("JS history extraction returned empty, trying fallback message selector...")
                     message_selector = (
+                        "[data-cy^='webchat-message'], "
                         ".message-bubble, "
                         "[class*='message-bubble'], "
                         "[class*='message-row'], "
@@ -422,9 +448,11 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         msg_text = await msg.inner_text()
                         msg_class = await msg.get_attribute("class") or ""
                         msg_style = await msg.get_attribute("style") or ""
+                        msg_data_cy = await msg.get_attribute("data-cy") or ""
                         
                         msg_classes = set(re.split(r'[\s\-_]', msg_class.lower()))
                         is_seller = (
+                            msg_data_cy == "webchat-message-send" or
                             "seller" in msg_classes or 
                             "me" in msg_classes or 
                             "right" in msg_classes or 
@@ -458,6 +486,14 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         })
 
                 if not chat_history:
+                    log.info("No message history found, saving DOM and screenshot.")
+                    try:
+                        await page.screenshot(path=os.path.join(LOG_DIR, "empty_history.png"))
+                        dom = await page.evaluate("document.body.innerHTML")
+                        with open(os.path.join(LOG_DIR, "dom_dump.html"), "w", encoding="utf-8") as f:
+                            f.write(dom)
+                    except Exception as e:
+                        log.error("Failed to dump DOM: %s", e)
                     log.info("No message history found, skipping.")
                     continue
 
@@ -480,8 +516,14 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     not last_msg_text.strip() or
                     "[gambar]" in last_msg_text.lower() or
                     "gambar" == last_msg_text.strip().lower() or
-                    "[image]" in last_msg_text.lower()
+                    "[image]" in last_msg_text.lower() or
+                    bool(re.match(r'^\d{1,2}:\d{2}$', last_msg_text.strip()))
                 )
+                
+                if last_msg_is_seller and is_image and len(chat_history) >= 2:
+                    prev_msg = chat_history[-2]
+                    if prev_msg["isSeller"] and is_assistant_ai_msg(prev_msg["text"]):
+                        is_assistant_ai = True
 
                 # If the last message is from the seller AND it's not Assistant AI AND it's not an image, skip
                 if last_msg_is_seller and not is_assistant_ai and not is_image:
@@ -523,6 +565,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
 
                 # Strategy 1: Specific contenteditable selectors in chat panel
                 ce_selectors = [
+                    "[data-cy='webchat-conversation-detail-input'] [contenteditable='true']",
                     "[data-testid='chat-input'] [contenteditable='true']",
                     ".chat-input [contenteditable='true']",
                     "[class*='chat-input'] [contenteditable='true']",
