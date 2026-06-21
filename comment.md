@@ -7,9 +7,9 @@ Syukurlah bot utama sekarang sudah berhasil berjalan dan membalas chat secara ot
 Di layar Command Prompt, muncul banyak pesan `[WARNING] Could not find chat item for user 'X' anymore`.
 **Akar Masalah:**
 Shopee Webchat menggunakan sistem *Dynamic Rendering* (Virtual Scroll). Saat bot mengeklik satu chat dan memprosesnya, daftar chat di sebelah kiri seringkali di-reset atau elemen lamanya dihapus oleh Shopee. Akibatnya, saat bot mencari elemen chat urutan ke-2 atau yang ada di bawah, elemen tersebut sudah hilang dari layar.
-**Rencana Perbaikan:**
-- Kita perlu membuat logika **Auto-Scroll**. Sebelum bot mencari `target_item`, bot harus memaksa layar daftar chat sebelah kiri untuk *scroll down* hingga username yang dicari muncul kembali di layar (menggunakan `element.scrollIntoView()`).
-- Jika daftar chat me-reset dirinya, bot harus melakukan pencarian ulang daftar (re-query) dari awal setiap kali selesai membalas 1 chat, bukan menyimpan daftar elemen di awal lalu memakainya secara berurutan.
+**Rencana Perbaikan (Selesai):**
+- Konsep "Auto-Scroll" dibatalkan karena tidak diperlukan. Bot kini beroperasi dalam **Standby Mode**, yang berarti bot hanya akan membaca dan memproses chat yang benar-benar terlihat di layar (visible) saat itu juga.
+- Jika daftar chat me-reset dirinya karena Virtual Scroll Shopee, bot akan kembali ke mode standby dan siap merespons bila ada chat baru masuk atau bila Anda (admin) secara manual men-scroll layar kembali ke bawah.
 
 ## 2. Membuat AI Menjadi Lebih Murah (Cost Optimization)
 Saat ini bot menggunakan model `phi3:mini` melalui sistem lokal Ollama. Karena Ollama dijalankan di komputer sendiri, sebenarnya penggunaan AI ini sudah **100% Gratis** tanpa biaya API sepeserpun. 
@@ -53,7 +53,7 @@ Jika Anda ingin menggunakan AI lain yang lebih murah/gratis untuk mengubah bot i
              response = await loop.run_in_executor(
                  None, 
                  lambda: model.generate_content(
-                     f"Balas pesan pembeli Shopee ini dengan ramah, singkat, dan alami dalam Bahasa Indonesia: {buyer_message}"
+                     f"Balas pesan pembeli Shopee ini dengan ramah, singkat, dan alami dalam Bahasa Indonesia. Jika pesan mengandung teks '[Pesan terakhir berupa gambar...]', maka cukup berikan jawaban atas pertanyaan di dalamnya seolah-olah Anda bisa melihat gambarnya: {buyer_message}"
                  )
              )
              reply = response.text.strip()
@@ -86,7 +86,7 @@ Jika Anda ingin menggunakan AI lain yang lebih murah/gratis untuk mengubah bot i
                  completion = client.chat.completions.create(
                      model="llama3-8b-8192",
                      messages=[
-                         {"role": "system", "content": "Balas pesan pembeli Shopee dengan ramah, singkat, dan alami dalam Bahasa Indonesia."},
+                         {"role": "system", "content": "Balas pesan pembeli Shopee dengan ramah, singkat, dan alami dalam Bahasa Indonesia. Jika pesan mengandung teks '[Pesan terakhir berupa gambar...]', maka fokuslah membalas pertanyaan pembeli yang ada di dalamnya."},
                          {"role": "user", "content": buyer_message}
                      ],
                      temperature=0.7,
