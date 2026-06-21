@@ -35,6 +35,20 @@ SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
+# ── AI Provider Configuration ──────────────────────────────────────────────────
+AI_PROVIDER = os.getenv("AI_PROVIDER", "").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+# Auto-detect provider if not explicitly configured but key is present
+if not AI_PROVIDER:
+    if GEMINI_API_KEY:
+        AI_PROVIDER = "gemini"
+    elif GROQ_API_KEY:
+        AI_PROVIDER = "groq"
+    else:
+        AI_PROVIDER = "ollama"
+
 GET_CHAT_ITEMS_JS = r"""() => {
     const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
     if (cells.length > 0) {
@@ -101,6 +115,77 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
         log.warning("Ollama error: %s", e)
     
     return get_auto_reply(buyer_message)  # fallback
+
+
+async def get_ai_reply_gemini(buyer_message: str) -> str:
+    """Generate reply using Google Gemini API."""
+    try:
+        if not GEMINI_API_KEY:
+            log.warning("GEMINI_API_KEY tidak dikonfigurasi, menggunakan auto-reply bawaan.")
+            return get_auto_reply(buyer_message)
+        
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Run in executor to prevent blocking the async event loop
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: model.generate_content(
+                f"Balas pesan pembeli Shopee ini dengan ramah, singkat, dan alami dalam Bahasa Indonesia. Jika pesan mengandung teks '[Pesan terakhir berupa gambar...]', maka cukup berikan jawaban atas pertanyaan di dalamnya seolah-olah Anda bisa melihat gambarnya: {buyer_message}"
+            )
+        )
+        reply = response.text.strip()
+        if reply:
+            return reply
+    except Exception as e:
+        log.warning("Gemini API error: %s", e)
+    return get_auto_reply(buyer_message)  # fallback
+
+
+async def get_ai_reply_groq(buyer_message: str) -> str:
+    """Generate reply using Groq API."""
+    try:
+        if not GROQ_API_KEY:
+            log.warning("GROQ_API_KEY tidak dikonfigurasi, menggunakan auto-reply bawaan.")
+            return get_auto_reply(buyer_message)
+        
+        from groq import Groq
+        client = Groq(api_key=GROQ_API_KEY)
+        loop = asyncio.get_running_loop()
+        
+        def call_groq():
+            completion = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role": "system", "content": "Balas pesan pembeli Shopee dengan ramah, singkat, dan alami dalam Bahasa Indonesia. Jika pesan mengandung teks '[Pesan terakhir berupa gambar...]', maka fokuslah membalas pertanyaan pembeli yang ada di dalamnya."},
+                    {"role": "user", "content": buyer_message}
+                ],
+                temperature=0.7,
+                max_tokens=150,
+            )
+            return completion.choices[0].message.content
+            
+        reply = await loop.run_in_executor(None, call_groq)
+        if reply:
+            return reply.strip()
+    except Exception as e:
+        log.warning("Groq API error: %s", e)
+    return get_auto_reply(buyer_message)  # fallback
+
+
+async def get_ai_reply(buyer_message: str) -> str:
+    """Route the request to the active AI provider (gemini, groq, or ollama)."""
+    if AI_PROVIDER == "gemini":
+        log.info("Menggunakan Gemini API untuk membalas...")
+        return await get_ai_reply_gemini(buyer_message)
+    elif AI_PROVIDER == "groq":
+        log.info("Menggunakan Groq API untuk membalas...")
+        return await get_ai_reply_groq(buyer_message)
+    else:
+        log.info("Menggunakan Ollama lokal untuk membalas...")
+        return await get_ai_reply_ollama(buyer_message)
 
 
 def is_assistant_ai_msg(text: str) -> bool:
@@ -323,9 +408,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         ".shopee-modal__close",
                         "[class*='popup'] button",
                         "[class*='modal'] button",
-                        ".icon-close",
-                        "text=Tutup",
-                        "text=Close"
+                        ".icon-close"
                     ]
                     for sel in popup_close_selectors:
                         try:
@@ -334,6 +417,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                                 log.info("Closing popup using selector '%s'...", sel)
                                 await popup_close.click()
                                 await page.wait_for_timeout(1000)
+                                break
                         except Exception:
                             pass
                 except Exception as e:
@@ -427,8 +511,13 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             if (containerRect.width > 0) {
                                 const relativeLeft = (bubbleRect.left - containerRect.left) / containerRect.width;
                                 const relativeRight = (containerRect.right - bubbleRect.right) / containerRect.width;
-                                if (relativeLeft > 0.4 || relativeRight < 0.1) {
+                                const bubbleCenter = bubbleRect.left + (bubbleRect.width / 2);
+                                const containerCenter = containerRect.left + (containerRect.width / 2);
+                                
+                                if (relativeLeft > 0.4 || (relativeRight < 0.1 && relativeLeft > 0.1) || bubbleCenter > containerCenter + 20) {
                                     isSeller = true;
+                                } else if (bubbleCenter < containerCenter - 20) {
+                                    isSeller = false;
                                 }
                             }
                         }
@@ -516,8 +605,13 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                                         if c_bbox and c_bbox['width'] > 0:
                                             relative_left = (bbox['x'] - c_bbox['x']) / c_bbox['width']
                                             relative_right = (c_bbox['x'] + c_bbox['width'] - (bbox['x'] + bbox['width'])) / c_bbox['width']
-                                            if relative_left > 0.4 or relative_right < 0.1:
+                                            bubble_center = bbox['x'] + (bbox['width'] / 2)
+                                            container_center = c_bbox['x'] + (c_bbox['width'] / 2)
+                                            
+                                            if relative_left > 0.4 or (relative_right < 0.1 and relative_left > 0.1) or bubble_center > container_center + 20:
                                                 is_seller = True
+                                            elif bubble_center < container_center - 20:
+                                                is_seller = False
                             except Exception:
                                 pass
                         chat_history.append({
@@ -544,6 +638,9 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         msg["isSeller"] = True
                     if DEFAULT_REPLY.lower()[:30] in msg_lower:
                         msg["isSeller"] = True
+
+                # Limit chat history to the last 4 messages to save tokens/RAM
+                chat_history = chat_history[-4:]
 
                 last_msg = chat_history[-1]
                 last_msg_text = last_msg["text"]
@@ -600,7 +697,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 if is_assistant_ai:
                     reply_text = "Ada yang bisa dibantu?"
                 else:
-                    reply_text = await get_ai_reply_ollama(buyer_message)
+                    reply_text = await get_ai_reply(buyer_message)
                     if reply_text == DEFAULT_REPLY:
                         log.warning("👉 UNANSWERED BUYER MESSAGE (Need manual reply): %s", buyer_message)
 
