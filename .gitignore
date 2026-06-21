@@ -3,3 +3,10 @@ logs/
 __pycache__/
 *.pyc
 .env
+.venv/
+logs-preview/
+bot-profile-preview/
+*.png
+*.html
+*.diff
+
