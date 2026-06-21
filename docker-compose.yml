@@ -20,7 +20,7 @@ services:
       - HEADLESS=false
       - PROFILE_DIR=/data/shopee-profile
       - POLL_INTERVAL=5           # seconds between chat poll cycles
-      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_URL=http://ollama:11434
 
     volumes:
       # Persist Chromium session so login survives container restarts
@@ -41,6 +41,16 @@ services:
         limits:
           memory: 2g
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   shopee-bot-profile:
   shopee-bot-logs:
+  ollama-data:
