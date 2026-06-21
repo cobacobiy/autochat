@@ -316,6 +316,51 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     await item.evaluate("node => node.click()")
                 await page.wait_for_timeout(2000)
 
+                # Close any blocking popup/modal
+                try:
+                    popup_close_selectors = [
+                        "button.shopee-popup__close-btn",
+                        ".shopee-modal__close",
+                        "[class*='popup'] button",
+                        "[class*='modal'] button",
+                        ".icon-close",
+                        "text=Tutup",
+                        "text=Close"
+                    ]
+                    for sel in popup_close_selectors:
+                        try:
+                            popup_close = page.locator(sel).first
+                            if await popup_close.is_visible():
+                                log.info("Closing popup using selector '%s'...", sel)
+                                await popup_close.click()
+                                await page.wait_for_timeout(1000)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    log.warning("Popup closing attempt failed: %s", e)
+
+                # Click "Lihat History Chat" or "Lihat Pesan Sebelumnya" button
+                try:
+                    history_btn_selectors = [
+                        "text=Lihat History Chat",
+                        "text=Lihat Pesan Sebelumnya",
+                        "button:has-text('History')",
+                        "button:has-text('Sebelumnya')"
+                    ]
+                    for sel in history_btn_selectors:
+                        try:
+                            history_btn = page.locator(sel).first
+                            if await history_btn.is_visible():
+                                log.info("Clicking '%s' button to load chat history...", sel)
+                                await history_btn.click()
+                                await page.wait_for_timeout(2000)
+                                break
+                        except Exception:
+                            pass
+                except Exception as e:
+                    log.warning("Loading chat history button click failed: %s", e)
+
+
                 # Extract chat history from the middle panel using JS
                 chat_history = await page.evaluate(r"""() => {
                     const messageContainers = [...document.querySelectorAll('div')].filter(el => {
@@ -512,6 +557,8 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     "[gambar]" in last_msg_text.lower() or
                     "gambar" == last_msg_text.strip().lower() or
                     "[image]" in last_msg_text.lower() or
+                    "[foto]" in last_msg_text.lower() or
+                    "[photo]" in last_msg_text.lower() or
                     bool(re.match(r'^\d{1,2}:\d{2}$', last_msg_text.strip()))
                 )
                 
@@ -535,6 +582,13 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 if not buyer_message:
                     # Fallback to the last message if no buyer message was identified
                     buyer_message = last_msg_text
+
+                # Append context if the last message is an image
+                if is_image:
+                    if buyer_message and buyer_message != last_msg_text:
+                        buyer_message = f'[Pesan terakhir berupa gambar. Pesan pembeli sebelumnya: "{buyer_message}"]'
+                    else:
+                        buyer_message = "[Pesan terakhir berupa gambar]"
 
                 # Bug 1: Double reply prevention
                 cache_key = f"{username}:{buyer_message[:50]}"
