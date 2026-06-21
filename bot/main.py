@@ -247,46 +247,41 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
             except Exception as ss_err:
                 log.warning("Failed to save debug screenshot: %s", ss_err)
 
-        # Extract usernames/identifiers for all chat items first to avoid mismatch after clicks
-        chat_identifiers = []
-        try:
-            elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
-            num_items = await page.evaluate("arr => arr.length", elements_handle)
-            for i in range(num_items):
-                item_handle = await page.evaluate_handle(f"(arr) => arr[{i}]", elements_handle)
-                item = item_handle.as_element()
-                if item:
-                    text = await item.inner_text()
-                    lines = [line.strip() for line in text.split('\n') if line.strip()]
-                    if lines:
-                        username = lines[0]
-                        chat_identifiers.append(username)
-            log.info("Found %d chat item(s) in sidebar list: %s", len(chat_identifiers), chat_identifiers)
-        except Exception as e:
-            log.error("Failed to extract chat items via JS: %s", e)
-
-        # Process chats one by one by finding the element for each username to avoid detachment and mismatch
-        for index, username in enumerate(chat_identifiers):
+        visited_usernames = set()
+        max_attempts = 30
+        for attempt in range(max_attempts):
             try:
+                index = -1
+                username = "Unknown"
+                
                 elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
-                fresh_length = await page.evaluate("arr => arr.length", elements_handle)
+                num_items = await page.evaluate("arr => arr.length", elements_handle)
                 
                 target_item = None
-                for i in range(fresh_length):
+                target_username = None
+                target_index = -1
+                for i in range(num_items):
                     item_handle = await page.evaluate_handle(f"(arr) => arr[{i}]", elements_handle)
                     item = item_handle.as_element()
                     if item:
                         text = await item.inner_text()
                         lines = [line.strip() for line in text.split('\n') if line.strip()]
-                        if lines and lines[0] == username:
-                            target_item = item
-                            break
-                            
+                        if lines:
+                            u_name = lines[0]
+                            if u_name not in visited_usernames:
+                                target_item = item
+                                target_username = u_name
+                                target_index = i
+                                break
+                                
                 if not target_item:
-                    log.warning("Could not find chat item for user '%s' anymore", username)
-                    continue
+                    break
                     
+                visited_usernames.add(target_username)
+                
                 item = target_item
+                username = target_username
+                index = target_index
                 item_text = await item.inner_text()
                 
                 # Check for unread badge or indicator

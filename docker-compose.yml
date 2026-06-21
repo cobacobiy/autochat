@@ -39,7 +39,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1g
+          memory: 2g
 
 volumes:
   shopee-bot-profile:
