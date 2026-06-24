@@ -695,28 +695,23 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     continue
 
                 log.info("Buyer message context: %s", buyer_message[:100])
-                if is_assistant_ai:
-                    reply_text = "Ada yang bisa dibantu?"
-                else:
-                    reply_text = await get_ai_reply(buyer_message)
-                    if "TIDAK TAHU" in reply_text:
-                        log.warning("👉 UNANSWERED BUYER MESSAGE (Dicatat ke Knowledge Base): %s", buyer_message)
-                        try:
-                            with open(KNOWLEDGE_PATH, "a", encoding="utf-8") as f:
-                                f.write(f"\n\nT: {buyer_message}\nJ: \n")
-                            log.info("Berhasil mencatat pertanyaan ke %s", KNOWLEDGE_PATH)
-                            
-                            global STORE_KNOWLEDGE
-                            with open(KNOWLEDGE_PATH, "r", encoding="utf-8") as f:
-                                STORE_KNOWLEDGE = f.read().strip()
-                        except Exception as e:
-                            log.error("Gagal update knowledge base: %s", e)
+                reply_text = await get_ai_reply(buyer_message)
+                
+                if "TIDAK TAHU" in reply_text or reply_text == DEFAULT_REPLY:
+                    log.warning("👉 UNANSWERED BUYER MESSAGE (Dicatat ke Knowledge Base): %s", buyer_message)
+                    try:
+                        with open(KNOWLEDGE_PATH, "a", encoding="utf-8") as f:
+                            f.write(f"\n\nT: {buyer_message}\nJ: \n")
+                        log.info("Berhasil mencatat pertanyaan ke %s", KNOWLEDGE_PATH)
                         
-                        replied_cache.add(cache_key)
-                        continue
+                        global STORE_KNOWLEDGE
+                        with open(KNOWLEDGE_PATH, "r", encoding="utf-8") as f:
+                            STORE_KNOWLEDGE = f.read().strip()
+                    except Exception as e:
+                        log.error("Gagal update knowledge base: %s", e)
                     
-                    if reply_text == DEFAULT_REPLY:
-                        log.warning("👉 UNANSWERED BUYER MESSAGE (Need manual reply): %s", buyer_message)
+                    replied_cache.add(cache_key)
+                    continue
 
                 # 7. Type and send reply
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
