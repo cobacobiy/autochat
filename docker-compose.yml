@@ -21,6 +21,8 @@ services:
       - PROFILE_DIR=/data/shopee-profile
       - POLL_INTERVAL=5           # seconds between chat poll cycles
       - OLLAMA_URL=http://ollama:11434
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-}
 
     volumes:
       # Persist Chromium session so login survives container restarts
@@ -49,6 +51,15 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull phi3:mini" ]
 
 volumes:
   shopee-bot-profile:

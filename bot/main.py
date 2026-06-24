@@ -107,7 +107,7 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
                 reply = resp.json().get("response", "").strip()
                 if reply:
                     return reply
-            log.warning("Ollama returned status code: %s", resp.status_code)
+            log.warning("Ollama returned status code: %s, message: %s", resp.status_code, resp.text)
     except Exception as e:
         log.warning("Ollama error: %s", e)
     
