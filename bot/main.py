@@ -97,7 +97,7 @@ def get_auto_reply(message: str) -> str:
 async def get_ai_reply_ollama(buyer_message: str) -> str:
     """Generate reply using Ollama."""
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(f"{OLLAMA_URL}/api/generate", json={
                 "model": "phi3:mini",
                 "prompt": f"Balas pesan pembeli Shopee ini dengan ramah dan singkat dalam Bahasa Indonesia: {buyer_message}",
