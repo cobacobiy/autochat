@@ -46,6 +46,34 @@ if not AI_PROVIDER:
     else:
         AI_PROVIDER = "ollama"
 
+# ── Knowledge Base / RAG Configuration ─────────────────────────────────────────
+KNOWLEDGE_PATH = os.getenv("KNOWLEDGE_PATH", "/app/store_knowledge.txt")
+STORE_KNOWLEDGE = ""
+
+# Try different paths for local development convenience
+paths_to_try = [
+    KNOWLEDGE_PATH,
+    "store_knowledge.txt",
+    "../store_knowledge.txt",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "store_knowledge.txt")
+]
+
+for p_path in paths_to_try:
+    if os.path.exists(p_path):
+        try:
+            with open(p_path, "r", encoding="utf-8") as f:
+                STORE_KNOWLEDGE = f.read().strip()
+            log.info("Berhasil membaca store_knowledge dari: %s", p_path)
+            KNOWLEDGE_PATH = p_path
+            break
+        except Exception as e:
+            log.error("Gagal membaca %s: %s", p_path, e)
+
+if not STORE_KNOWLEDGE:
+    STORE_KNOWLEDGE = "Jawab pertanyaan pembeli dengan singkat, ramah, dan natural."
+    log.info("Store knowledge kosong/tidak ditemukan, menggunakan prompt default.")
+
+
 GET_CHAT_ITEMS_JS = r"""() => {
     const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
     if (cells.length > 0) {
@@ -98,9 +126,16 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
     """Generate reply using Ollama."""
     try:
         async with httpx.AsyncClient(timeout=60) as client:
+            prompt_text = (
+                f"Anda adalah asisten admin toko yang ramah. Berikut adalah pedoman dan FAQ toko kami:\n"
+                f"{STORE_KNOWLEDGE}\n\n"
+                f"Berdasarkan pedoman di atas, balas pesan pembeli berikut dalam Bahasa Indonesia yang natural:\n"
+                f"Pembeli: {buyer_message}\n"
+                f"PENTING: Jika pertanyaan tidak bisa dijawab dari pedoman di atas, JANGAN mengarang jawaban. Balas persis dengan kata: TIDAK TAHU"
+            )
             resp = await client.post(f"{OLLAMA_URL}/api/generate", json={
                 "model": "phi3:mini",
-                "prompt": f"Balas pesan pembeli Shopee ini dengan ramah dan singkat dalam Bahasa Indonesia: {buyer_message}",
+                "prompt": prompt_text,
                 "stream": False
             })
             if resp.status_code == 200:
@@ -127,11 +162,14 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
         
         # Run in executor to prevent blocking the async event loop
         loop = asyncio.get_running_loop()
+        prompt_text = (
+            f"Anda adalah asisten admin toko. Pedoman toko Anda:\n{STORE_KNOWLEDGE}\n\n"
+            f"Pesan pembeli: {buyer_message}\n"
+            f"Balas dengan singkat, natural. PENTING: Jika jawaban tidak ada di pedoman, JANGAN mengarang jawaban. Balas persis dengan kata: TIDAK TAHU"
+        )
         response = await loop.run_in_executor(
             None,
-            lambda: model.generate_content(
-                f"Balas pesan pembeli Shopee ini dengan ramah, singkat, dan alami dalam Bahasa Indonesia. Jika pesan mengandung teks '[Pesan terakhir berupa gambar...]', maka cukup berikan jawaban atas pertanyaan di dalamnya seolah-olah Anda bisa melihat gambarnya: {buyer_message}"
-            )
+            lambda: model.generate_content(prompt_text)
         )
         reply = response.text.strip()
         if reply:
@@ -661,6 +699,22 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     reply_text = "Ada yang bisa dibantu?"
                 else:
                     reply_text = await get_ai_reply(buyer_message)
+                    if "TIDAK TAHU" in reply_text:
+                        log.warning("👉 UNANSWERED BUYER MESSAGE (Dicatat ke Knowledge Base): %s", buyer_message)
+                        try:
+                            with open(KNOWLEDGE_PATH, "a", encoding="utf-8") as f:
+                                f.write(f"\n\nT: {buyer_message}\nJ: \n")
+                            log.info("Berhasil mencatat pertanyaan ke %s", KNOWLEDGE_PATH)
+                            
+                            global STORE_KNOWLEDGE
+                            with open(KNOWLEDGE_PATH, "r", encoding="utf-8") as f:
+                                STORE_KNOWLEDGE = f.read().strip()
+                        except Exception as e:
+                            log.error("Gagal update knowledge base: %s", e)
+                        
+                        replied_cache.add(cache_key)
+                        continue
+                    
                     if reply_text == DEFAULT_REPLY:
                         log.warning("👉 UNANSWERED BUYER MESSAGE (Need manual reply): %s", buyer_message)
 
