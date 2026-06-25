@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+defaults:
+  run:
+    shell: powershell -ExecutionPolicy Bypass -command ". '{0}'"
 
 jobs:
   # ============================================
@@ -22,6 +25,7 @@ jobs:
           $searchPaths = @(
             "C:\Python311",
             "C:\Python312",
+            "C:\Python313",
             "C:\Program Files\Python311",
             "C:\Program Files\Python312",
             "C:\Users\data 2\AppData\Local\Programs\Python\Python313",
