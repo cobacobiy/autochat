@@ -109,16 +109,12 @@ AUTO_REPLIES = {
     "pengiriman": "Penjaringan Jakarta Utara",
     "dari mana": "Penjaringan Jakarta Utara",
 }
-DEFAULT_REPLY = "Halo kak! Terima kasih sudah menghubungi kami. Tim kami akan segera membalas 😊"
+DEFAULT_REPLY = "Ada yang bisa dibantu?"
 
 
 # ── Bot logic ────────────────────────────────────────
 def get_auto_reply(message: str) -> str:
-    """Match message keywords to canned replies."""
-    msg_lower = message.lower()
-    for keyword, reply in AUTO_REPLIES.items():
-        if keyword in msg_lower:
-            return reply
+    """Fallback when AI fails or times out."""
     return DEFAULT_REPLY
 
 
@@ -126,21 +122,40 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
     """Generate reply using Ollama."""
     try:
         async with httpx.AsyncClient(timeout=60) as client:
-            prompt_text = (
-                f"Anda adalah asisten admin toko yang ramah. Berikut adalah pedoman dan FAQ toko kami:\n"
-                f"{STORE_KNOWLEDGE}\n\n"
-                f"Berdasarkan pedoman di atas, balas pesan pembeli berikut dalam Bahasa Indonesia yang natural:\n"
-                f"Pembeli: {buyer_message}\n"
-                f"PENTING: Jika pertanyaan tidak bisa dijawab dari pedoman di atas, JANGAN mengarang jawaban. Balas persis dengan kata: TIDAK TAHU"
+            system_prompt = (
+                "Anda adalah Customer Service toko. Anda HANYA boleh menjawab berdasarkan Pedoman Toko berikut ini:\n\n"
+                f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
+                "ATURAN SUPER KETAT:\n"
+                "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
+                "2. DILARANG KERAS mengarang, menebak, atau meniru format (seperti mengetik T: atau J:).\n"
+                "3. Jika pertanyaan pembeli TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
+                "4. Jawablah dengan singkat dan ramah.\n\n"
+                "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
+                "Pembeli: Barang ready?\n"
+                "Anda: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
+                "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN (Misal: ongkos kirim, asuransi, nota, dll):\n"
+                "Pembeli: Ongkir ke Jakarta berapa kak?\n"
+                "Anda: TIDAK TAHU"
             )
-            resp = await client.post(f"{OLLAMA_URL}/api/generate", json={
-                "model": "phi3:mini",
-                "prompt": prompt_text,
-                "stream": False
+            resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
+                "model": "qwen2",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": buyer_message}
+                ],
+                "stream": False,
+                "options": {
+                    "temperature": 0.0,
+                    "top_p": 0.1
+                }
             })
             if resp.status_code == 200:
-                reply = resp.json().get("response", "").strip()
+                reply = resp.json().get("message", {}).get("content", "").strip()
                 if reply:
+                    # SAFETY FILTER: Reject if model hallucinates the store knowledge format
+                    if "T:" in reply or "J:" in reply or reply.startswith("T:"):
+                        log.warning("Ollama hallucinated Q&A format. Forcing TIDAK TAHU.")
+                        return "TIDAK TAHU"
                     return reply
             log.warning("Ollama returned status code: %s, message: %s", resp.status_code, resp.text)
     except Exception as e:
@@ -163,13 +178,22 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
         # Run in executor to prevent blocking the async event loop
         loop = asyncio.get_running_loop()
         prompt_text = (
-            f"Anda adalah asisten admin toko. Pedoman toko Anda:\n{STORE_KNOWLEDGE}\n\n"
-            f"Pesan pembeli: {buyer_message}\n"
-            f"Balas dengan singkat, natural. PENTING: Jika jawaban tidak ada di pedoman, JANGAN mengarang jawaban. Balas persis dengan kata: TIDAK TAHU"
+            "Anda adalah Customer Service toko. Anda HANYA boleh menjawab berdasarkan Pedoman Toko berikut ini:\n\n"
+            f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
+            "ATURAN SUPER KETAT:\n"
+            "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
+            "2. DILARANG KERAS mengarang, menebak, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
+            "3. Jika pertanyaan pembeli TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
+            "4. Jawablah dengan singkat dan ramah.\n\n"
+            f"Pertanyaan Pembeli: {buyer_message}\n"
+            "Jawaban Anda:"
         )
         response = await loop.run_in_executor(
             None,
-            lambda: model.generate_content(prompt_text)
+            lambda: model.generate_content(
+                prompt_text,
+                generation_config=genai.types.GenerationConfig(temperature=0.0)
+            )
         )
         reply = response.text.strip()
         if reply:
@@ -698,20 +722,17 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 reply_text = await get_ai_reply(buyer_message)
                 
                 if "TIDAK TAHU" in reply_text or reply_text == DEFAULT_REPLY:
-                    log.warning("👉 UNANSWERED BUYER MESSAGE (Dicatat ke Knowledge Base): %s", buyer_message)
+                    log.warning("👉 UNANSWERED BUYER MESSAGE (Dicatat ke unanswered_questions.txt): %s", buyer_message)
                     try:
-                        with open(KNOWLEDGE_PATH, "a", encoding="utf-8") as f:
+                        unanswered_path = os.path.join(os.path.dirname(KNOWLEDGE_PATH), "unanswered_questions.txt")
+                        with open(unanswered_path, "a", encoding="utf-8") as f:
                             f.write(f"\n\nT: {buyer_message}\nJ: \n")
-                        log.info("Berhasil mencatat pertanyaan ke %s", KNOWLEDGE_PATH)
-                        
-                        global STORE_KNOWLEDGE
-                        with open(KNOWLEDGE_PATH, "r", encoding="utf-8") as f:
-                            STORE_KNOWLEDGE = f.read().strip()
+                        log.info("Berhasil mencatat pertanyaan ke %s", unanswered_path)
                     except Exception as e:
-                        log.error("Gagal update knowledge base: %s", e)
+                        log.error("Gagal mencatat pertanyaan unanswered: %s", e)
                     
-                    replied_cache.add(cache_key)
-                    continue
+                    # Ubah balasan menjadi teks default alih-alih diam (silent)
+                    reply_text = DEFAULT_REPLY
 
                 # 7. Type and send reply
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)

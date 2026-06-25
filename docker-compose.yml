@@ -23,6 +23,7 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_PROVIDER=${AI_PROVIDER:-}
+      - TZ=Asia/Jakarta
 
     volumes:
       # Persist Chromium session so login survives container restarts
@@ -61,7 +62,7 @@ services:
       - ollama
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull phi3:mini" ]
+    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull qwen2" ]
 
 volumes:
   shopee-bot-profile:

@@ -10,8 +10,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     websockify \
     supervisor \
     procps \
+    tzdata \
     && ln -s /usr/share/novnc/vnc.html /usr/share/novnc/index.html \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Jakarta
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 WORKDIR /app
