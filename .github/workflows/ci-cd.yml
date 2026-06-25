@@ -24,6 +24,7 @@ jobs:
             "C:\Python312",
             "C:\Program Files\Python311",
             "C:\Program Files\Python312",
+            "C:\Users\data 2\AppData\Local\Programs\Python\Python313",
             "C:\Users\acers\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none",
             "C:\Users\acers\AppData\Local\Python\pythoncore-3.14-64"
           )
