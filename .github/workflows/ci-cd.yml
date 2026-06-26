@@ -216,7 +216,7 @@ jobs:
           $DOCKER_USER = $env:DOCKER_USERNAME
           if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
           $env:DOCKER_USERNAME = $DOCKER_USER
-          docker compose up -d --pull always
+          docker compose up -d
 
           # Bersihkan image lama
           docker image prune -f

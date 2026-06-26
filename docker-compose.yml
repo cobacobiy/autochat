@@ -3,7 +3,7 @@ services:
     build:
       context: ./bot
       dockerfile: Dockerfile
-    image: shopee-autochat-bot:latest
+    image: ${DOCKER_USERNAME:-local}/shopee-autochat-bot:latest
     container_name: shopee-bot
     shm_size: 2gb
 
