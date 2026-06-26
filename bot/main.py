@@ -416,9 +416,11 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
                         DEFAULT_REPLY.lower()[:15] in preview_lower or
                         "gambar" in preview_lower or
-                        "image" in preview_lower
+                        "image" in preview_lower or
+                        "gagal mengirim" in preview_lower or
+                        "tunggu balasan" in preview_lower
                     ):
-                        log.info("Skipping chat #%d: already replied by seller", index + 1)
+                        log.info("Skipping chat #%d: already replied by seller or blocked by Shopee", index + 1)
                         continue
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
@@ -674,6 +676,11 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 last_msg_text = last_msg["text"]
                 last_msg_is_seller = last_msg["isSeller"]
                 
+                # Prevent looping on Shopee's chat limits/system error messages
+                if "gagal mengirim" in last_msg_text.lower() or "tunggu balasan pembeli" in last_msg_text.lower():
+                    log.info("Chat blocked by Shopee (Gagal mengirim chat). Waiting for buyer to reply. Skipping.")
+                    continue
+
                 is_assistant_ai = is_assistant_ai_msg(last_msg_text)
                 
                 # Check if the last message is an image
