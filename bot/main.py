@@ -760,8 +760,10 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     except Exception as e:
                         log.error("Gagal mencatat pertanyaan unanswered: %s", e)
                     
-                    # Ubah balasan menjadi teks default alih-alih diam (silent)
-                    reply_text = DEFAULT_REPLY
+                    # Skip chat entirely instead of sending a confusing DEFAULT_REPLY
+                    log.info("Skipping reply because AI doesn't know the answer. Leaving for manual admin.")
+                    replied_cache.add(cache_key)
+                    continue
 
                 # 7. Type and send reply
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
