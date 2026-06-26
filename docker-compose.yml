@@ -32,6 +32,8 @@ services:
       - shopee-bot-logs:/data/logs
       # Bind mount the store knowledge base FAQ file
       - ./store_knowledge.txt:/app/store_knowledge.txt
+      # Bind mount the unanswered questions log
+      - ./unanswered_questions.txt:/app/unanswered_questions.txt
 
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -19,13 +19,16 @@ LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "bot.log")
 
+# If running under Supervisor, it already redirects stdout/stderr to the log file.
+# Adding a FileHandler in Python would cause duplicate entries in the log file.
+handlers = [logging.StreamHandler(sys.stdout)]
+if "SUPERVISOR_PROCESS_NAME" not in os.environ:
+    handlers.append(logging.FileHandler(LOG_FILE))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(LOG_FILE),
-    ],
+    handlers=handlers,
 )
 log = logging.getLogger(__name__)
 
@@ -715,7 +718,21 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 # Bug 1: Double reply prevention
                 cache_key = f"{username}:{buyer_message[:50]}"
                 if cache_key in replied_cache:
-                    log.info("Already replied to '%s' with this message context, skipping.", username)
+                    log.debug("Already replied to '%s' with this message context, skipping.", username)
+                    continue
+
+                # Filter out short non-question acknowledgments/messages to save tokens and prevent unnecessary replies
+                SKIP_MESSAGES = {
+                    "ok", "oke", "baik", "baik kak", "baik ka", "oke kak", "oke ka",
+                    "siap", "terima kasih", "makasih", "sami sami", "mks", "thx", "ty",
+                    "ok kak", "ok ka", "sip", "siap kak", "siap ka", "makasih kak", "makasih ka",
+                    "nuhun", "suwun"
+                }
+                
+                buyer_msg_lower = buyer_message.strip().lower().rstrip(".,!?~ ")
+                if buyer_msg_lower in SKIP_MESSAGES:
+                    log.info("Skipping non-question acknowledgment for '%s': %s", username, buyer_message)
+                    replied_cache.add(cache_key)
                     continue
 
                 log.info("Buyer message context: %s", buyer_message[:100])
@@ -782,6 +799,16 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         input_sel_used = "textarea-fallback"
 
                 if not input_box:
+                    # Detect if chat is closed or handled by Shopee's AI Assistant
+                    try:
+                        page_content = await page.content()
+                        if "Chat telah diakhiri otomatis" in page_content or "Asisten AI Toko" in page_content:
+                            log.info("Chat with '%s' is closed or delegated to Shopee's AI Assistant. Skipping reply.", username)
+                            replied_cache.add(cache_key)
+                            continue
+                    except Exception as ce_err:
+                        log.warning("Failed to check page content for closed chat: %s", ce_err)
+
                     log.warning("Could not find chat input box — Shopee may have changed its DOM.")
                     try:
                         fail_path = os.path.join(LOG_DIR, f"no_input_{username}_{int(time.time())}.png")
