@@ -130,14 +130,14 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
                 f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
                 "ATURAN SUPER KETAT:\n"
                 "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-                "2. DILARANG KERAS mengarang, menebak, atau meniru format (seperti mengetik T: atau J:).\n"
-                "3. Jika pertanyaan pembeli TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-                "4. Jawablah dengan singkat dan ramah.\n\n"
+                "2. JANGAN menjawab pertanyaan yang tidak ada di Pedoman Toko (contoh: minta foto asli, komplain, no resi, dll).\n"
+                "3. Jika pertanyaan pembeli TIDAK ADA persis jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
+                "4. Jawablah langsung tanpa mengetik 'J:' atau awalan lainnya.\n\n"
                 "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
                 "Pembeli: Barang ready?\n"
                 "Anda: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
-                "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN (Misal: ongkos kirim, asuransi, nota, dll):\n"
-                "Pembeli: Ongkir ke Jakarta berapa kak?\n"
+                "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN:\n"
+                "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
                 "Anda: TIDAK TAHU"
             )
             resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
@@ -155,8 +155,13 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
             if resp.status_code == 200:
                 reply = resp.json().get("message", {}).get("content", "").strip()
                 if reply:
-                    # SAFETY FILTER: Reject if model hallucinates the store knowledge format
-                    if "T:" in reply or "J:" in reply or reply.startswith("T:"):
+                    # SAFETY FILTER: Clean up "J:" prefix or reject hallucinated formats
+                    if reply.startswith("J:"):
+                        reply = reply[2:].strip()
+                    elif reply.startswith("J :"):
+                        reply = reply[3:].strip()
+                        
+                    if "T:" in reply:
                         log.warning("Ollama hallucinated Q&A format. Forcing TIDAK TAHU.")
                         return "TIDAK TAHU"
                     return reply
@@ -185,9 +190,9 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
             f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
             "ATURAN SUPER KETAT:\n"
             "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-            "2. DILARANG KERAS mengarang, menebak, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
+            "2. DILARANG KERAS mengarang, menebak, atau menambahkan informasi yang tidak ada di Pedoman Toko (contoh: minta foto asli paket, komplain barang, dll).\n"
             "3. Jika pertanyaan pembeli TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-            "4. Jawablah dengan singkat dan ramah.\n\n"
+            "4. Jawablah dengan singkat dan ramah tanpa mengetik 'J:' di awal.\n\n"
             f"Pertanyaan Pembeli: {buyer_message}\n"
             "Jawaban Anda:"
         )
