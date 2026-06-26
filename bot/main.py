@@ -506,7 +506,12 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     
                     if history_link:
                         log.info("Ditemukan link Riwayat Chat. Mengklik...")
-                        await history_link.click()
+                        try:
+                            await history_link.click(timeout=3000)
+                        except Exception as e:
+                            log.warning("Gagal click normal (%s), mencoba force click via JS...", e)
+                            await history_link.evaluate("node => node.click()")
+                        
                         await page.wait_for_timeout(2000)
                         
                         # Ekstrak pesan pembeli terakhir dari popup
@@ -579,9 +584,12 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             riwayat_buyer_message = extracted_msg.strip()
                             log.info("Ekstrak riwayat chat pembeli berhasil: %s", riwayat_buyer_message[:100])
                         
-                        # Tutup popup
+                        # Tutup popup dengan cara yang sangat robust
                         close_selectors = [
                             "button[aria-label='Close']",
+                            "button[aria-label='Tutup']",
+                            ".shopee-react-modal__close",
+                            ".shopee-react-modal__close-btn",
                             ".shopee-popup__close-btn",
                             "[class*='modal'] button[class*='close']",
                             "[class*='dialog'] button[class*='close']",
@@ -612,10 +620,25 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                                     
                         if close_btn:
                             log.info("Menutup popup Riwayat Chat...")
-                            await close_btn.click()
-                            await page.wait_for_timeout(1000)
+                            try:
+                                await close_btn.click(timeout=2000)
+                            except:
+                                await close_btn.evaluate("node => node.click()")
                         else:
-                            log.warning("Close button popup tidak ditemukan!")
+                            log.warning("Close button popup tidak ditemukan! Mencoba Escape...")
+                            await page.keyboard.press("Escape")
+                        
+                        await page.wait_for_timeout(1000)
+                        
+                        # Fallback ekstrim: hapus node dari DOM jika masih ada agar tidak memblokir chat selanjutnya
+                        await page.evaluate(r"""() => {
+                            const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
+                            dialogs.forEach(d => {
+                                if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                                    d.remove();
+                                }
+                            });
+                        }""")
                 except Exception as e:
                     log.warning("Gagal membaca Riwayat Chat: %s", e)
 
