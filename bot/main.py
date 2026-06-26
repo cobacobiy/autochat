@@ -41,6 +41,13 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 # ── AI Provider Configuration ──────────────────────────────────────────────────
 AI_PROVIDER = os.getenv("AI_PROVIDER", "").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+# ── Safety / Limit Configuration ──────────────────────────────────────────────
+UNANSWERED_PATH = os.getenv("UNANSWERED_PATH", "/app/unanswered_questions.txt")
+MAX_DAILY_REPLIES = int(os.getenv("MAX_DAILY_REPLIES", "500"))
+DAILY_REPLY_COUNTER = 0
+DAILY_REPLY_DATE = ""
 
 # Auto-detect provider if not explicitly configured but key is present
 if not AI_PROVIDER:
@@ -75,6 +82,23 @@ for p_path in paths_to_try:
 if not STORE_KNOWLEDGE:
     STORE_KNOWLEDGE = "Jawab pertanyaan pembeli dengan singkat, ramah, dan natural."
     log.info("Store knowledge kosong/tidak ditemukan, menggunakan prompt default.")
+
+
+def reload_knowledge():
+    """Reload STORE_KNOWLEDGE if the file content changes."""
+    global STORE_KNOWLEDGE, KNOWLEDGE_PATH
+    for p_path in paths_to_try:
+        if os.path.exists(p_path):
+            try:
+                with open(p_path, "r", encoding="utf-8") as f:
+                    new_content = f.read().strip()
+                if new_content and new_content != STORE_KNOWLEDGE:
+                    STORE_KNOWLEDGE = new_content
+                    KNOWLEDGE_PATH = p_path
+                    log.info("🔄 Knowledge base reloaded dari: %s", p_path)
+                return
+            except Exception as e:
+                log.error("Gagal reload knowledge: %s", e)
 
 
 GET_CHAT_ITEMS_JS = r"""() => {
@@ -173,6 +197,7 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
     except Exception as e:
         log.warning("Ollama error: %s", e)
     
+    log.warning("Ollama gagal, menggunakan keyword auto-reply sebagai fallback")
     return get_auto_reply(buyer_message)  # fallback
 
 
@@ -185,7 +210,7 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
         
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(GEMINI_MODEL)
         
         # Run in executor to prevent blocking the async event loop
         loop = asyncio.get_running_loop()
@@ -212,6 +237,7 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
             return reply
     except Exception as e:
         log.warning("Gemini API error: %s", e)
+    log.warning("Gemini gagal, menggunakan keyword auto-reply sebagai fallback")  
     return get_auto_reply(buyer_message)  # fallback
 
 
@@ -233,6 +259,8 @@ def is_assistant_ai_msg(text: str) -> bool:
         "asisten ai toko" in t or 
         "ai asistent toko" in t or 
         "asistent ai" in t or
+        "dikirim oleh asisten ai" in t or
+        "dikirim oleh asisten" in t or
         "auto-reply" in t or
         "auto reply" in t or
         "kami akan segera membalas" in t or
@@ -240,12 +268,76 @@ def is_assistant_ai_msg(text: str) -> bool:
     )
 
 
+IS_SELLER_JS = r"""
+function isSeller(el, container) {
+    const dataCy = el.getAttribute('data-cy') || '';
+    if (dataCy.includes('send') || dataCy.includes('seller') || dataCy.includes('to-user')) return true;
+    if (dataCy === 'webchat-message-receive') return false;
+    
+    const className = (el.className || '').toLowerCase();
+    if (className.includes('send') || className.includes('seller') || 
+        className.includes('self') || className.includes('right')) return true;
+    
+    let current = el;
+    for (let depth = 0; depth < 5; depth++) {
+        if (!current) break;
+        const style = window.getComputedStyle(current);
+        if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || style.alignItems === 'flex-end') return true;
+        
+        const parentClass = (current.parentElement ? current.parentElement.className : '') || '';
+        if (typeof parentClass === 'string') {
+            const lowerParentClass = parentClass.toLowerCase();
+            if (lowerParentClass.includes('send') || lowerParentClass.includes('seller') || lowerParentClass.includes('self') || lowerParentClass.includes('right')) {
+                return true;
+            }
+        }
+        current = current.parentElement;
+    }
+    
+    if (container) {
+        const cRect = container.getBoundingClientRect();
+        const bRect = el.getBoundingClientRect();
+        if (cRect.width > 0) {
+            const relLeft = (bRect.left - cRect.left) / cRect.width;
+            const relRight = (cRect.right - bRect.right) / cRect.width;
+            const bubbleCenter = bRect.left + (bRect.width / 2);
+            const containerCenter = cRect.left + (cRect.width / 2);
+            
+            if (relLeft > 0.4 || (relRight < 0.1 && relLeft > 0.1) || bubbleCenter > containerCenter + 20) return true;
+            if (bubbleCenter < containerCenter - 20) return false;
+        }
+    }
+    
+    const bubbleStyle = window.getComputedStyle(el);
+    const bgColor = bubbleStyle.backgroundColor;
+    if (bgColor && (
+        bgColor.includes('238') ||
+        bgColor.includes('255, 87') ||
+        bgColor.includes('ee4d2d') ||
+        el.closest('[class*="seller"]') ||
+        el.closest('[class*="right"]') ||
+        el.closest('[class*="send"]')
+    )) {
+        return true;
+    }
+    
+    return false;
+}
+"""
 
-async def handle_unread_chats(page, replied_cache: set) -> int:
+
+
+async def handle_unread_chats(page, replied_cache: dict) -> int:
     """
     Find unread and Assistant AI chats, and reply to each one.
     Returns the number of chats processed.
     """
+    global DAILY_REPLY_COUNTER, DAILY_REPLY_DATE
+    current_date = time.strftime("%Y-%m-%d")
+    if DAILY_REPLY_DATE != current_date:
+        DAILY_REPLY_DATE = current_date
+        DAILY_REPLY_COUNTER = 0
+
     processed = 0
     try:
         # 0. Dismiss "Restore pages?" dialog if present
@@ -512,10 +604,19 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             log.warning("Gagal click normal (%s), mencoba force click via JS...", e)
                             await history_link.evaluate("node => node.click()")
                         
-                        await page.wait_for_timeout(2000)
+                        await page.wait_for_timeout(1000)
+                        try:
+                            await page.wait_for_selector(
+                                'div[role="dialog"], [class*="modal"]', 
+                                state="visible", 
+                                timeout=5000
+                            )
+                        except Exception:
+                            log.warning("Popup Riwayat Chat tidak muncul dalam 5 detik")
                         
                         # Ekstrak pesan pembeli terakhir dari popup
                         extracted_msg = await page.evaluate(r"""() => {
+                            """ + IS_SELLER_JS + r"""
                             let modal = null;
                             const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
                             for (const d of dialogs) {
@@ -536,40 +637,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                                     continue;
                                 }
                                 
-                                let isSeller = false;
-                                const dataCy = el.getAttribute('data-cy') || '';
-                                if (dataCy.includes('send') || dataCy.includes('seller') || dataCy.includes('to-user')) {
-                                    isSeller = true;
-                                }
-                                
-                                const className = el.className || '';
-                                if (typeof className === 'string') {
-                                    const lowerClass = className.toLowerCase();
-                                    if (lowerClass.includes('send') || lowerClass.includes('seller') || lowerClass.includes('self') || lowerClass.includes('right')) {
-                                        isSeller = true;
-                                    }
-                                }
-                                
-                                let current = el;
-                                for (let depth = 0; depth < 5; depth++) {
-                                    if (!current) break;
-                                    const style = window.getComputedStyle(current);
-                                    if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || style.alignItems === 'flex-end') {
-                                        isSeller = true;
-                                        break;
-                                    }
-                                    const parentClass = (current.parentElement ? current.parentElement.className : '') || '';
-                                    if (typeof parentClass === 'string') {
-                                        const lowerParentClass = parentClass.toLowerCase();
-                                        if (lowerParentClass.includes('send') || lowerParentClass.includes('seller') || lowerParentClass.includes('self') || lowerParentClass.includes('right')) {
-                                            isSeller = true;
-                                            break;
-                                        }
-                                    }
-                                    current = current.parentElement;
-                                }
-                                
-                                if (!isSeller) {
+                                if (!isSeller(el, container)) {
                                     buyerMessages.push(text);
                                 }
                             }
@@ -622,7 +690,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             log.info("Menutup popup Riwayat Chat...")
                             try:
                                 await close_btn.click(timeout=2000)
-                            except:
+                            except Exception:
                                 await close_btn.evaluate("node => node.click()")
                         else:
                             log.warning("Close button popup tidak ditemukan! Mencoba Escape...")
@@ -645,6 +713,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
 
                 # Extract chat history from the middle panel using JS
                 chat_history = await page.evaluate(r"""() => {
+                    """ + IS_SELLER_JS + r"""
                     const messageContainers = [...document.querySelectorAll('div')].filter(el => {
                         const className = el.className || '';
                         const style = window.getComputedStyle(el);
@@ -673,72 +742,9 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         const text = (b.textContent || '').trim();
                         if (!text) continue;
                         
-                        let isSeller = false;
-                        let current = b;
-                        for (let depth = 0; depth < 4; depth++) {
-                            if (!current) break;
-                            const curStyle = window.getComputedStyle(current);
-                            const curClass = current.className || '';
-                            const dataCy = current.getAttribute('data-cy') || '';
-                            if (
-                                dataCy === 'webchat-message-send' ||
-                                curClass.includes('seller') || 
-                                curClass.split(/[\s-_]/).includes('me') || 
-                                curClass.includes('right') || 
-                                curClass.includes('send') ||
-                                curStyle.justifyContent === 'flex-end' ||
-                                curStyle.alignItems === 'flex-end' ||
-                                curStyle.alignSelf === 'flex-end' ||
-                                curStyle.float === 'right' ||
-                                current.getAttribute('style')?.includes('right')
-                            ) {
-                                isSeller = true;
-                                break;
-                            }
-                            if (dataCy === 'webchat-message-receive') {
-                                isSeller = false;
-                                break;
-                            }
-                            current = current.parentElement;
-                        }
-                        
-                        // Position-based check: if bubble center is on the right side of the container or aligns right, it's seller
-                        if (!isSeller && bestContainer) {
-                            const containerRect = bestContainer.getBoundingClientRect();
-                            const bubbleRect = b.getBoundingClientRect();
-                            if (containerRect.width > 0) {
-                                const relativeLeft = (bubbleRect.left - containerRect.left) / containerRect.width;
-                                const relativeRight = (containerRect.right - bubbleRect.right) / containerRect.width;
-                                const bubbleCenter = bubbleRect.left + (bubbleRect.width / 2);
-                                const containerCenter = containerRect.left + (containerRect.width / 2);
-                                
-                                if (relativeLeft > 0.4 || (relativeRight < 0.1 && relativeLeft > 0.1) || bubbleCenter > containerCenter + 20) {
-                                    isSeller = true;
-                                } else if (bubbleCenter < containerCenter - 20) {
-                                    isSeller = false;
-                                }
-                            }
-                        }
-                        
-                        // Color-based check: seller bubbles often have orange/brand-colored backgrounds
-                        if (!isSeller) {
-                            const bubbleStyle = window.getComputedStyle(b);
-                            const bgColor = bubbleStyle.backgroundColor;
-                            if (bgColor && (
-                                bgColor.includes('238') ||
-                                bgColor.includes('255, 87') ||
-                                bgColor.includes('ee4d2d') ||
-                                b.closest('[class*="seller"]') ||
-                                b.closest('[class*="right"]') ||
-                                b.closest('[class*="send"]')
-                            )) {
-                                isSeller = true;
-                            }
-                        }
-                        
                         history.push({
                             text: text,
-                            isSeller: isSeller
+                            isSeller: isSeller(b, bestContainer)
                         });
                     }
                     
@@ -771,51 +777,20 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         "[class*='message-item']"
                     )
                     messages = await page.query_selector_all(message_selector)
+                    container = await page.query_selector("[class*='chat-content'], [class*='conversation']")
                     for msg in messages:
-                        msg_text = await msg.inner_text()
-                        msg_class = await msg.get_attribute("class") or ""
-                        msg_style = await msg.get_attribute("style") or ""
-                        msg_data_cy = await msg.get_attribute("data-cy") or ""
-                        
-                        msg_classes = set(re.split(r'[\s\-_]', msg_class.lower()))
-                        is_seller = (
-                            msg_data_cy == "webchat-message-send" or
-                            "seller" in msg_classes or 
-                            "me" in msg_classes or 
-                            "right" in msg_classes or 
-                            "right" in msg_style.lower()
-                        )
-                        if not is_seller:
-                            parent = await msg.query_selector("xpath=..")
-                            if parent:
-                                parent_class = await parent.get_attribute("class") or ""
-                                parent_classes = set(re.split(r'[\s\-_]', parent_class.lower()))
-                                if "seller" in parent_classes or "me" in parent_classes or "right" in parent_classes:
-                                    is_seller = True
-                        
-                        if not is_seller:
-                            try:
-                                bbox = await msg.bounding_box()
-                                if bbox:
-                                    container = await page.query_selector("[class*='chat-content'], [class*='conversation']")
-                                    if container:
-                                        c_bbox = await container.bounding_box()
-                                        if c_bbox and c_bbox['width'] > 0:
-                                            relative_left = (bbox['x'] - c_bbox['x']) / c_bbox['width']
-                                            relative_right = (c_bbox['x'] + c_bbox['width'] - (bbox['x'] + bbox['width'])) / c_bbox['width']
-                                            bubble_center = bbox['x'] + (bbox['width'] / 2)
-                                            container_center = c_bbox['x'] + (c_bbox['width'] / 2)
-                                            
-                                            if relative_left > 0.4 or (relative_right < 0.1 and relative_left > 0.1) or bubble_center > container_center + 20:
-                                                is_seller = True
-                                            elif bubble_center < container_center - 20:
-                                                is_seller = False
-                            except Exception:
-                                pass
-                        chat_history.append({
-                            "text": msg_text,
-                            "isSeller": is_seller
-                        })
+                        try:
+                            msg_text = await msg.inner_text()
+                            is_seller = await page.evaluate(
+                                "([el, c]) => {" + IS_SELLER_JS + " return isSeller(el, c); }",
+                                [msg, container]
+                            )
+                            chat_history.append({
+                                "text": msg_text,
+                                "isSeller": bool(is_seller)
+                            })
+                        except Exception as e:
+                            log.warning("Gagal memproses pesan fallback: %s", e)
 
                 if not chat_history:
                     log.info("No message history found, saving DOM and screenshot.")
@@ -914,7 +889,13 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 buyer_msg_lower = buyer_message.strip().lower().rstrip(".,!?~ ")
                 if buyer_msg_lower in SKIP_MESSAGES:
                     log.info("Skipping non-question acknowledgment for '%s': %s", username, buyer_message)
-                    replied_cache.add(cache_key)
+                    replied_cache[cache_key] = time.time()
+                    continue
+
+                # Check daily reply limit
+                if DAILY_REPLY_COUNTER >= MAX_DAILY_REPLIES:
+                    log.warning("⚠️ Daily reply limit reached (%d). Skipping reply for '%s'.", MAX_DAILY_REPLIES, username)
+                    replied_cache[cache_key] = time.time()
                     continue
 
                 log.info("Buyer message context: %s", buyer_message[:100])
@@ -926,20 +907,23 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     if has_real_buyer_message:
                         # Ada pertanyaan pembeli tapi AI tidak tahu → catat & skip
                         try:
-                            unanswered_path = os.path.join(os.path.dirname(KNOWLEDGE_PATH), "unanswered_questions.txt")
+                            import re
+                            from datetime import datetime
+                            clean_msg = re.sub(r'\d{1,2}:\d{2}$', '', buyer_message).strip()
+                            unanswered_path = UNANSWERED_PATH
                             with open(unanswered_path, "a", encoding="utf-8") as f:
-                                f.write(f"\n\nT: {buyer_message}\nJ: \n")
+                                f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {clean_msg}\nJ: \n")
                             log.info("Dicatat ke %s", unanswered_path)
                         except Exception as e:
                             log.error("Gagal mencatat: %s", e)
                         
                         log.info("SKIP: Pertanyaan tidak ada di knowledge. Biarkan admin jawab.")
-                        replied_cache.add(cache_key)
+                        replied_cache[cache_key] = time.time()
                         continue
                     else:
                         # Tidak ada pesan pembeli sama sekali → skip juga, jangan jawab apa-apa
                         log.info("SKIP: Tidak ada pesan pembeli. Tidak perlu menjawab.")
-                        replied_cache.add(cache_key)
+                        replied_cache[cache_key] = time.time()
                         continue
 
                 # 7. Type and send reply
@@ -995,7 +979,7 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         page_content = await page.content()
                         if "Chat telah diakhiri otomatis" in page_content or "Asisten AI Toko" in page_content:
                             log.info("Chat with '%s' is closed or delegated to Shopee's AI Assistant. Skipping reply.", username)
-                            replied_cache.add(cache_key)
+                            replied_cache[cache_key] = time.time()
                             continue
                     except Exception as ce_err:
                         log.warning("Failed to check page content for closed chat: %s", ce_err)
@@ -1072,7 +1056,9 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     log.info("=== REPLY RESULT: SUCCESS (sent via Enter) ===")
 
                 log.info("Replied to '%s': %s", username, reply_text[:80])
-                replied_cache.add(cache_key)
+                replied_cache[cache_key] = time.time()
+                DAILY_REPLY_COUNTER += 1
+                log.info("Daily reply count: %d/%d", DAILY_REPLY_COUNTER, MAX_DAILY_REPLIES)
                 processed += 1
 
             except Exception as exc:
@@ -1145,7 +1131,8 @@ async def run_bot():
 
         page = context.pages[0] if context.pages else await context.new_page()
 
-        replied_cache = set()
+        replied_cache = {}
+        cycle_count = 0
 
         log.info("Navigating to Shopee Seller Chat…")
         await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
@@ -1181,6 +1168,23 @@ async def run_bot():
 
         while not shutdown_event.is_set():
             try:
+                cycle_count += 1
+                
+                # Heartbeat logging every ~5 minutes
+                if cycle_count % 60 == 0:
+                    log.info("💓 Bot heartbeat: %d cycles completed, replied_cache size: %d", 
+                             cycle_count, len(replied_cache))
+
+                # Hot reload store_knowledge.txt every ~10 minutes
+                if cycle_count % 120 == 0:
+                    reload_knowledge()
+
+                # Clean up expired replied_cache items (> 24 hours)
+                now = time.time()
+                expired = [k for k, v in replied_cache.items() if now - v > 86400]
+                for k in expired:
+                    del replied_cache[k]
+
                 # Dynamic routing check (detect if redirected to login page)
                 if "login" in page.url or "auth" in page.url:
                     log.warning("Detected logout/redirect to login page. Retrying navigation...")

@@ -23,6 +23,8 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_PROVIDER=${AI_PROVIDER:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
 
     volumes:
