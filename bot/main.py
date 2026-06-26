@@ -118,7 +118,11 @@ DEFAULT_REPLY = "Ada yang bisa dibantu?"
 # ── Bot logic ────────────────────────────────────────
 def get_auto_reply(message: str) -> str:
     """Fallback when AI fails or times out."""
-    return DEFAULT_REPLY
+    msg = message.lower()
+    for keyword, reply in AUTO_REPLIES.items():
+        if keyword in msg:
+            return reply
+    return "TIDAK TAHU"
 
 
 async def get_ai_reply_ollama(buyer_message: str) -> str:
@@ -436,6 +440,8 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     await item.evaluate("node => node.click()")
                 await page.wait_for_timeout(2000)
 
+                riwayat_buyer_message = ""  # akan diisi di Langkah 1 jika ada riwayat
+
                 # Close any blocking popup/modal
                 try:
                     popup_close_selectors = [
@@ -478,6 +484,140 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                             pass
                 except Exception as e:
                     log.warning("Loading chat history button click failed: %s", e)
+
+                # Langkah 1: Deteksi "Riwayat Chat" dan Baca Isinya
+                try:
+                    history_link_selectors = [
+                        "text=Lihat Semua Riwayat Chat",
+                        "a:has-text('Lihat Semua Riwayat Chat')",
+                        "text=Lihat semua riwayat chat",
+                        "span:has-text('Lihat Semua Riwayat Chat')",
+                        "div:has-text('Lihat Semua Riwayat Chat')",
+                    ]
+                    history_link = None
+                    for sel in history_link_selectors:
+                        try:
+                            loc = page.locator(sel).first
+                            if await loc.is_visible():
+                                history_link = loc
+                                break
+                        except Exception:
+                            pass
+                    
+                    if history_link:
+                        log.info("Ditemukan link Riwayat Chat. Mengklik...")
+                        await history_link.click()
+                        await page.wait_for_timeout(2000)
+                        
+                        # Ekstrak pesan pembeli terakhir dari popup
+                        extracted_msg = await page.evaluate(r"""() => {
+                            let modal = null;
+                            const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
+                            for (const d of dialogs) {
+                                if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                                    modal = d;
+                                    break;
+                                }
+                            }
+                            const container = modal || document.body;
+                            const bubbles = container.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble, [class*="message_text"], [class*="message-text"]');
+                            
+                            const buyerMessages = [];
+                            for (const el of bubbles) {
+                                const text = (el.textContent || '').trim();
+                                if (!text) continue;
+                                
+                                if (text.includes("Asisten AI Toko") || text.includes("Pesan kakak suda masuk") || text.includes("Hello dear! What would you like to ask?")) {
+                                    continue;
+                                }
+                                
+                                let isSeller = false;
+                                const dataCy = el.getAttribute('data-cy') || '';
+                                if (dataCy.includes('send') || dataCy.includes('seller') || dataCy.includes('to-user')) {
+                                    isSeller = true;
+                                }
+                                
+                                const className = el.className || '';
+                                if (typeof className === 'string') {
+                                    const lowerClass = className.toLowerCase();
+                                    if (lowerClass.includes('send') || lowerClass.includes('seller') || lowerClass.includes('self') || lowerClass.includes('right')) {
+                                        isSeller = true;
+                                    }
+                                }
+                                
+                                let current = el;
+                                for (let depth = 0; depth < 5; depth++) {
+                                    if (!current) break;
+                                    const style = window.getComputedStyle(current);
+                                    if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || style.alignItems === 'flex-end') {
+                                        isSeller = true;
+                                        break;
+                                    }
+                                    const parentClass = (current.parentElement ? current.parentElement.className : '') || '';
+                                    if (typeof parentClass === 'string') {
+                                        const lowerParentClass = parentClass.toLowerCase();
+                                        if (lowerParentClass.includes('send') || lowerParentClass.includes('seller') || lowerParentClass.includes('self') || lowerParentClass.includes('right')) {
+                                            isSeller = true;
+                                            break;
+                                        }
+                                    }
+                                    current = current.parentElement;
+                                }
+                                
+                                if (!isSeller) {
+                                    buyerMessages.push(text);
+                                }
+                            }
+                            
+                            if (buyerMessages.length > 0) {
+                                return buyerMessages[buyerMessages.length - 1];
+                            }
+                            return "";
+                        }""")
+                        
+                        if extracted_msg:
+                            riwayat_buyer_message = extracted_msg.strip()
+                            log.info("Ekstrak riwayat chat pembeli berhasil: %s", riwayat_buyer_message[:100])
+                        
+                        # Tutup popup
+                        close_selectors = [
+                            "button[aria-label='Close']",
+                            ".shopee-popup__close-btn",
+                            "[class*='modal'] button[class*='close']",
+                            "[class*='dialog'] button[class*='close']",
+                            "button:has-text('✕')",
+                            "button:has-text('×')",
+                            ".icon-close",
+                            "[class*='close']",
+                        ]
+                        close_btn = None
+                        for sel in close_selectors:
+                            try:
+                                loc = page.locator(f"[role='dialog'] {sel}").first
+                                if await loc.is_visible():
+                                    close_btn = loc
+                                    break
+                            except Exception:
+                                pass
+                        
+                        if not close_btn:
+                            for sel in close_selectors:
+                                try:
+                                    loc = page.locator(sel).first
+                                    if await loc.is_visible():
+                                        close_btn = loc
+                                        break
+                                except Exception:
+                                    pass
+                                    
+                        if close_btn:
+                            log.info("Menutup popup Riwayat Chat...")
+                            await close_btn.click()
+                            await page.wait_for_timeout(1000)
+                        else:
+                            log.warning("Close button popup tidak ditemukan!")
+                except Exception as e:
+                    log.warning("Gagal membaca Riwayat Chat: %s", e)
 
 
                 # Extract chat history from the middle panel using JS
@@ -716,6 +856,11 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         buyer_message = msg["text"]
                         break
                 
+                # Jika tidak ada pesan pembeli di chat utama, gunakan dari riwayat
+                if not buyer_message and riwayat_buyer_message:
+                    buyer_message = riwayat_buyer_message
+                    log.info("Using buyer message from Riwayat Chat: %s", buyer_message[:100])
+                
                 has_real_buyer_message = bool(buyer_message)
                 
                 if not buyer_message:
@@ -753,24 +898,26 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                 reply_text = await get_ai_reply(buyer_message)
                 
                 if "TIDAK TAHU" in reply_text or reply_text == DEFAULT_REPLY:
-                    log.warning("👉 UNANSWERED BUYER MESSAGE (Dicatat ke unanswered_questions.txt): %s", buyer_message)
-                    try:
-                        unanswered_path = os.path.join(os.path.dirname(KNOWLEDGE_PATH), "unanswered_questions.txt")
-                        with open(unanswered_path, "a", encoding="utf-8") as f:
-                            f.write(f"\n\nT: {buyer_message}\nJ: \n")
-                        log.info("Berhasil mencatat pertanyaan ke %s", unanswered_path)
-                    except Exception as e:
-                        log.error("Gagal mencatat pertanyaan unanswered: %s", e)
+                    log.warning("👉 AI tidak tahu jawaban untuk: %s", buyer_message)
                     
                     if has_real_buyer_message:
-                        # Skip chat entirely instead of sending a confusing DEFAULT_REPLY
-                        log.info("Skipping reply because AI doesn't know the answer. Leaving for manual admin.")
+                        # Ada pertanyaan pembeli tapi AI tidak tahu → catat & skip
+                        try:
+                            unanswered_path = os.path.join(os.path.dirname(KNOWLEDGE_PATH), "unanswered_questions.txt")
+                            with open(unanswered_path, "a", encoding="utf-8") as f:
+                                f.write(f"\n\nT: {buyer_message}\nJ: \n")
+                            log.info("Dicatat ke %s", unanswered_path)
+                        except Exception as e:
+                            log.error("Gagal mencatat: %s", e)
+                        
+                        log.info("SKIP: Pertanyaan tidak ada di knowledge. Biarkan admin jawab.")
                         replied_cache.add(cache_key)
                         continue
                     else:
-                        # No real buyer message (just Shopee AI greeting). Send default greeting.
-                        log.info("No real buyer message found (only AI greeting). Sending DEFAULT_REPLY.")
-                        reply_text = DEFAULT_REPLY
+                        # Tidak ada pesan pembeli sama sekali → skip juga, jangan jawab apa-apa
+                        log.info("SKIP: Tidak ada pesan pembeli. Tidak perlu menjawab.")
+                        replied_cache.add(cache_key)
+                        continue
 
                 # 7. Type and send reply
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
