@@ -716,6 +716,8 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                         buyer_message = msg["text"]
                         break
                 
+                has_real_buyer_message = bool(buyer_message)
+                
                 if not buyer_message:
                     # Fallback to the last message if no buyer message was identified
                     buyer_message = last_msg_text
@@ -760,10 +762,15 @@ async def handle_unread_chats(page, replied_cache: set) -> int:
                     except Exception as e:
                         log.error("Gagal mencatat pertanyaan unanswered: %s", e)
                     
-                    # Skip chat entirely instead of sending a confusing DEFAULT_REPLY
-                    log.info("Skipping reply because AI doesn't know the answer. Leaving for manual admin.")
-                    replied_cache.add(cache_key)
-                    continue
+                    if has_real_buyer_message:
+                        # Skip chat entirely instead of sending a confusing DEFAULT_REPLY
+                        log.info("Skipping reply because AI doesn't know the answer. Leaving for manual admin.")
+                        replied_cache.add(cache_key)
+                        continue
+                    else:
+                        # No real buyer message (just Shopee AI greeting). Send default greeting.
+                        log.info("No real buyer message found (only AI greeting). Sending DEFAULT_REPLY.")
+                        reply_text = DEFAULT_REPLY
 
                 # 7. Type and send reply
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
