@@ -10,6 +10,7 @@ import re
 import signal
 import sys
 import time
+from datetime import datetime
 import httpx
 
 from playwright.async_api import async_playwright
@@ -849,21 +850,30 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
 
                 # Extract the latest buyer message to generate the reply from
                 buyer_message = ""
+                found_buyer_msg = False
                 for msg in reversed(chat_history):
                     if not msg["isSeller"] and not is_assistant_ai_msg(msg["text"]):
                         buyer_message = msg["text"]
+                        found_buyer_msg = True
                         break
                 
                 # Jika tidak ada pesan pembeli di chat utama, gunakan dari riwayat
-                if not buyer_message and riwayat_buyer_message:
+                if not found_buyer_msg and riwayat_buyer_message:
                     buyer_message = riwayat_buyer_message
+                    found_buyer_msg = True
                     log.info("Using buyer message from Riwayat Chat: %s", buyer_message[:100])
                 
-                has_real_buyer_message = bool(buyer_message)
-                
-                if not buyer_message:
-                    # Fallback to the last message if no buyer message was identified
-                    buyer_message = last_msg_text
+                force_default_reply = False
+                if not found_buyer_msg:
+                    if is_assistant_ai:
+                        log.info("Assistant AI menu detected with no buyer message. Will reply with DEFAULT_REPLY.")
+                        buyer_message = "[ASISTEN_AI_MENU]"
+                        force_default_reply = True
+                    else:
+                        log.info("No buyer message found (buyer did not chat anything). Skipping.")
+                        continue
+
+                has_real_buyer_message = bool(buyer_message.strip()) and not force_default_reply
 
                 # Append context if the last message is an image
                 if is_image:
@@ -898,17 +908,18 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                     replied_cache[cache_key] = time.time()
                     continue
 
-                log.info("Buyer message context: %s", buyer_message[:100])
-                reply_text = await get_ai_reply(buyer_message)
+                if force_default_reply:
+                    reply_text = DEFAULT_REPLY
+                else:
+                    log.info("Buyer message context: %s", buyer_message[:100])
+                    reply_text = await get_ai_reply(buyer_message)
                 
-                if "TIDAK TAHU" in reply_text or reply_text == DEFAULT_REPLY:
+                if "TIDAK TAHU" in reply_text or (reply_text == DEFAULT_REPLY and not force_default_reply):
                     log.warning("👉 AI tidak tahu jawaban untuk: %s", buyer_message)
                     
                     if has_real_buyer_message:
                         # Ada pertanyaan pembeli tapi AI tidak tahu → catat & skip
                         try:
-                            import re
-                            from datetime import datetime
                             clean_msg = re.sub(r'\d{1,2}:\d{2}$', '', buyer_message).strip()
                             unanswered_path = UNANSWERED_PATH
                             with open(unanswered_path, "a", encoding="utf-8") as f:
