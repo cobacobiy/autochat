@@ -468,9 +468,20 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
             try:
                 index = -1
                 username = "Unknown"
+                riwayat_already_read = False
                 
-                elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
-                num_items = await page.evaluate("arr => arr.length", elements_handle)
+                try:
+                    elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
+                    num_items = await page.evaluate("arr => arr.length", elements_handle)
+                except Exception as e:
+                    log.warning("Stale element reference, re-fetching: %s", e)
+                    await page.wait_for_timeout(1000)
+                    try:
+                        elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
+                        num_items = await page.evaluate("arr => arr.length", elements_handle)
+                    except Exception as e2:
+                        log.error("Failed to re-fetch chat items: %s", e2)
+                        break
                 
                 target_item = None
                 target_username = None
@@ -526,6 +537,22 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                         continue
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
+                
+                # Bersihkan overlay/dialog yang mungkin tersisa sebelum klik chat item berikutnya
+                try:
+                    await page.evaluate(r"""() => {
+                        document.querySelectorAll('[class*="overlay"], [class*="mask"], [class*="backdrop"]').forEach(el => {
+                            if (el.style.position === 'fixed' || el.style.position === 'absolute') {
+                                el.remove();
+                            }
+                        });
+                        document.querySelectorAll('div[role="dialog"]').forEach(d => {
+                            if (d.textContent && d.textContent.includes("Riwayat Chat")) d.remove();
+                        });
+                    }""")
+                except Exception:
+                    pass
+
                 # Use Playwright native click to ensure React events fire correctly
                 try:
                     await item.click(timeout=3000)
@@ -597,7 +624,8 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                         except Exception:
                             pass
                     
-                    if history_link:
+                    if history_link and not riwayat_already_read:
+                        riwayat_already_read = True
                         log.info("Ditemukan link Riwayat Chat. Mengklik...")
                         try:
                             await history_link.click(timeout=3000)
@@ -708,6 +736,24 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                                 }
                             });
                         }""")
+
+                        # Verifikasi popup sudah tertutup
+                        await page.wait_for_timeout(500)
+                        still_open = await page.evaluate(r"""() => {
+                            const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"]');
+                            for (const d of dialogs) {
+                                if (d.textContent && d.textContent.includes("Riwayat Chat")) return true;
+                            }
+                            return false;
+                        }""")
+                        if still_open:
+                            log.warning("Popup Riwayat Chat masih terbuka! Force close via Escape + DOM removal...")
+                            await page.keyboard.press("Escape")
+                            await page.wait_for_timeout(500)
+                            await page.evaluate(r"""() => {
+                                document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="overlay"], [class*="mask"]').forEach(d => d.remove());
+                            }""")
+                            await page.wait_for_timeout(500)
                 except Exception as e:
                     log.warning("Gagal membaca Riwayat Chat: %s", e)
 
@@ -740,8 +786,10 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                     
                     const history = [];
                     for (const b of bubbles) {
+                        if (b.closest && b.closest('[class*="history"], [class*="riwayat"]')) continue;
                         const text = (b.textContent || '').trim();
                         if (!text) continue;
+                        if (text.includes('Lihat Semua Riwayat Chat')) continue;
                         
                         history.push({
                             text: text,
@@ -1071,6 +1119,9 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                 DAILY_REPLY_COUNTER += 1
                 log.info("Daily reply count: %d/%d", DAILY_REPLY_COUNTER, MAX_DAILY_REPLIES)
                 processed += 1
+                
+                # Delay sebelum pindah ke chat berikutnya agar DOM terupdate
+                await page.wait_for_timeout(2000)
 
             except Exception as exc:
                 log.error("Error processing chat item #%d: %s", index + 1, exc)
