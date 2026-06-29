@@ -257,9 +257,12 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
         reply = response.text.strip()
         if reply:
             reply_lower = reply.lower()
-            if reply_lower.startswith("j:"): reply = reply[2:].strip()
-            elif reply_lower.startswith("anda:"): reply = reply[5:].strip()
-            elif reply_lower.startswith("jawaban:"): reply = reply[8:].strip()
+            if reply_lower.startswith("j:"):
+                reply = reply[2:].strip()
+            elif reply_lower.startswith("anda:"):
+                reply = reply[5:].strip()
+            elif reply_lower.startswith("jawaban:"):
+                reply = reply[8:].strip()
             return reply
     except Exception as e:
         log.warning("Gemini API error: %s", e)
