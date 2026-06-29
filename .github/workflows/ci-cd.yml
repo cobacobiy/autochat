@@ -142,6 +142,13 @@ jobs:
           docker_user = os.environ.get("DOCKER_USERNAME") or "local"
           image = f"{docker_user}/shopee-autochat-bot:{os.environ.get('IMAGE_TAG')}"
           
+          if docker_user == "local":
+              print(f"Building {image} locally for preview because no Docker Hub registry is used...")
+              subprocess.run(["docker", "build", "-t", image, "./bot"], check=True)
+          else:
+              print(f"Pulling {image} from registry...")
+              subprocess.run(["docker", "pull", image], check=True)
+          
           wk = os.environ.get("GITHUB_WORKSPACE")
           cmd = [
               "docker", "run", "-d",
@@ -213,7 +220,13 @@ jobs:
           env_vars = os.environ.copy()
           env_vars["DOCKER_USERNAME"] = docker_user
           
-          subprocess.run(["docker", "compose", "up", "-d"], env=env_vars, check=True)
+          if docker_user == "local":
+              print("Building and deploying locally because no Docker Hub registry is used...")
+              subprocess.run(["docker", "compose", "up", "-d", "--build"], env=env_vars, check=True)
+          else:
+              print("Pulling image from registry and deploying...")
+              subprocess.run(["docker", "compose", "pull"], env=env_vars, check=True)
+              subprocess.run(["docker", "compose", "up", "-d"], env=env_vars, check=True)
           subprocess.run(["docker", "image", "prune", "-f"], check=False)
           
           print("Deploy production selesai!\nnoVNC: http://<SERVER_IP>:6080")
