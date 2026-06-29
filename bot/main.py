@@ -84,6 +84,16 @@ if not STORE_KNOWLEDGE:
     STORE_KNOWLEDGE = "Jawab pertanyaan pembeli dengan singkat, ramah, dan natural."
     log.info("Store knowledge kosong/tidak ditemukan, menggunakan prompt default.")
 
+STORE_KNOWLEDGE_ANSWERS = []
+
+def parse_knowledge_answers():
+    global STORE_KNOWLEDGE_ANSWERS
+    STORE_KNOWLEDGE_ANSWERS = []
+    for line in STORE_KNOWLEDGE.split('\n'):
+        if line.startswith('J:'):
+            STORE_KNOWLEDGE_ANSWERS.append(line[2:].strip())
+
+parse_knowledge_answers()
 
 def reload_knowledge():
     """Reload STORE_KNOWLEDGE if the file content changes."""
@@ -96,6 +106,7 @@ def reload_knowledge():
                 if new_content and new_content != STORE_KNOWLEDGE:
                     STORE_KNOWLEDGE = new_content
                     KNOWLEDGE_PATH = p_path
+                    parse_knowledge_answers()
                     log.info("🔄 Knowledge base reloaded dari: %s", p_path)
                 return
             except Exception as e:
@@ -161,12 +172,15 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
                 "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
                 "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
                 "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-                "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n\n"
+                "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n"
+                "5. JANGAN merangkai kalimat sendiri atau membuat kalimat sopan/formal panjang (seperti 'Mohon maaf atas ketidaknyamanan'). Jika pertanyaan bukan FAQ umum, WAJIB jawab TIDAK TAHU.\n\n"
                 "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
                 "Pembeli: Barang ready?\n"
                 "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
                 "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
                 "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
+                "Jawaban: TIDAK TAHU\n\n"
+                "Pembeli: Tolong diusahakan pagi ya kak pengirimannya\n"
                 "Jawaban: TIDAK TAHU\n\n"
                 "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
                 "Jawaban: TIDAK TAHU\n\n"
@@ -233,12 +247,15 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
             "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
             "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
             "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-            "4. Jawablah dengan singkat dan ramah tanpa mengetik awalan 'J:', 'Anda:', atau 'Jawaban:'.\n\n"
+            "4. Jawablah dengan singkat dan ramah tanpa mengetik awalan 'J:', 'Anda:', atau 'Jawaban:'.\n"
+            "5. JANGAN merangkai kalimat sendiri atau membuat kalimat sopan/formal panjang (seperti 'Mohon maaf atas ketidaknyamanan'). Jika pertanyaan bukan FAQ umum, WAJIB jawab TIDAK TAHU.\n\n"
             "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
             "Pembeli: Barang ready?\n"
             "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
             "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
             "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
+            "Jawaban: TIDAK TAHU\n\n"
+            "Pembeli: Tolong diusahakan pagi ya kak pengirimannya\n"
             "Jawaban: TIDAK TAHU\n\n"
             "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
             "Jawaban: TIDAK TAHU\n\n"
@@ -912,6 +929,9 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                         msg["isSeller"] = True
                     if DEFAULT_REPLY.lower()[:30] in msg_lower:
                         msg["isSeller"] = True
+                    for ans in STORE_KNOWLEDGE_ANSWERS:
+                        if len(ans) > 10 and ans.lower()[:30] in msg_lower:
+                            msg["isSeller"] = True
 
                 # Limit chat history to the last 4 messages to save tokens/RAM
                 chat_history = chat_history[-4:]

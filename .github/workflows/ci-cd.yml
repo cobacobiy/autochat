@@ -7,103 +7,43 @@ on:
     branches: [ main ]
     types: [opened, synchronize, reopened, closed]
 
-defaults:
-  run:
-    shell: powershell -ExecutionPolicy Bypass -command ". '{0}'"
-
 jobs:
   # ============================================
   # Job 1: Lint & Validasi Python
   # ============================================
   validate:
     if: github.event.action != 'closed'
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Locate or Install Python (Global)
-        run: |
-          $searchPaths = @(
-            "C:\Python311",
-            "C:\Python312",
-            "C:\Python313",
-            "C:\Program Files\Python311",
-            "C:\Program Files\Python312",
-            "C:\Users\data 2\AppData\Local\Programs\Python\Python313",
-            "C:\Users\acers\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none",
-            "C:\Users\acers\AppData\Local\Python\pythoncore-3.14-64"
-          )
-          $found = $false
-          foreach ($path in $searchPaths) {
-            try {
-              if (Test-Path "$path\python.exe" -ErrorAction Stop) {
-                echo "$path" >> $env:GITHUB_PATH
-                if (Test-Path "$path\Scripts" -ErrorAction Stop) {
-                  echo "$path\Scripts" >> $env:GITHUB_PATH
-                }
-                echo "Found Python at $path"
-                $found = $true
-                break
-              }
-            } catch {
-              echo "Skipping $path due to access/permission restrictions."
-            }
-          }
-
-          if (-not $found) {
-            echo "Python not found. Initiating dynamic global installation..."
-            $version = "3.11.9"
-            $url = "https://www.python.org/ftp/python/$version/python-$version-amd64.exe"
-            $installer = "$env:TEMP\python-installer.exe"
-            
-            echo "Downloading Python $version from $url..."
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $url -OutFile $installer
-            
-            echo "Installing Python $version to C:\Python311..."
-            $arguments = "/quiet InstallAllUsers=1 TargetDir=C:\Python311 PrependPath=0 AssociateFiles=0 Shortcuts=0 Include_doc=0"
-            $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-            
-            if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
-              Write-Error "Python installation failed with exit code $($process.ExitCode)"
-              exit 1
-            }
-            
-            echo "Python installed successfully."
-            
-            # Verify and add to path
-            if (Test-Path "C:\Python311\python.exe") {
-              echo "C:\Python311" >> $env:GITHUB_PATH
-              if (Test-Path "C:\Python311\Scripts") {
-                echo "C:\Python311\Scripts" >> $env:GITHUB_PATH
-              }
-            } else {
-              Write-Error "Python installation directory C:\Python311\python.exe not found after install!"
-              exit 1
-            }
-          }
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Verify Python & Upgrade Pip
+        shell: bash
         run: |
           python --version
-          python -m pip install --upgrade pip --break-system-packages
+          python -m pip install --upgrade pip --break-system-packages || python -m pip install --upgrade pip
 
       - name: Install Linter
-        run: python -m pip install ruff --break-system-packages
+        shell: bash
+        run: python -m pip install ruff --break-system-packages || python -m pip install ruff
 
       - name: Validasi Kode (Lint)
+        shell: bash
         run: python -m ruff check bot/
 
   # ============================================
   # Job 2: Build & Push Docker Image
-  # - PR        → tag: pr-<number>-<sha7>
-  # - Push main → tag: latest
   # ============================================
   build:
     if: github.event.action != 'closed'
     needs: validate
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     outputs:
       image_tag: ${{ steps.tag.outputs.IMAGE_TAG }}
     steps:
@@ -112,14 +52,15 @@ jobs:
 
       - name: Set Image Tag
         id: tag
+        shell: bash
         run: |
-          if ("${{ github.event_name }}" -eq "pull_request") {
-            $sha = "${{ github.event.pull_request.head.sha }}".Substring(0,7)
-            $TAG = "pr-${{ github.event.pull_request.number }}-$sha"
-          } else {
-            $TAG = "latest"
-          }
-          echo "IMAGE_TAG=$TAG" >> $env:GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            sha=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+            TAG="pr-${{ github.event.pull_request.number }}-$sha"
+          else
+            TAG="latest"
+          fi
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_OUTPUT
           echo "Image tag: $TAG"
 
       - name: Login to Docker Hub
@@ -133,21 +74,21 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker Build & Push
+        shell: bash
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
         run: |
-          $DOCKER_USER = $env:DOCKER_USERNAME
-          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
-          $IMAGE = "$DOCKER_USER/shopee-autochat-bot:$env:IMAGE_TAG"
+          DOCKER_USER=${DOCKER_USERNAME:-local}
+          IMAGE="$DOCKER_USER/shopee-autochat-bot:$IMAGE_TAG"
           echo "Building: $IMAGE"
           docker build -t "$IMAGE" ./bot
-          if ($DOCKER_USER -ne "local") {
+          if [ "$DOCKER_USER" != "local" ]; then
             docker push "$IMAGE"
             echo "Image pushed: $IMAGE"
-          } else {
+          else
             echo "Skipping push: Docker Hub credentials not configured. Image built locally as $IMAGE"
-          }
+          fi
 
   # ============================================
   # Job 3: Deploy Preview (HANYA saat PR)
@@ -155,12 +96,13 @@ jobs:
   deploy-preview:
     needs: build
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Deploy Preview Container
+        shell: bash
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
@@ -171,27 +113,26 @@ jobs:
           docker compose up -d ollama ollama-init
 
           # Hapus container preview lama
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
+          docker rm -f shopee-bot-preview || true
 
-          $DOCKER_USER = $env:DOCKER_USERNAME
-          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
-          $IMAGE = "$DOCKER_USER/shopee-autochat-bot:$env:IMAGE_TAG"
+          DOCKER_USER=${DOCKER_USERNAME:-local}
+          IMAGE="$DOCKER_USER/shopee-autochat-bot:$IMAGE_TAG"
 
           # Jalankan container preview (port 6081 supaya tidak bentrok dengan production)
-          docker run -d `
-            --name shopee-bot-preview `
-            --network autochat_default `
-            --restart unless-stopped `
-            --shm-size=2g `
-            -e HEADLESS=false `
-            -e POLL_INTERVAL=10 `
-            -e VNC_PASSWORD=previewpass `
-            -e OLLAMA_URL=http://ollama:11434 `
-            -v "shopee-bot-profile-preview:/data/shopee-profile" `
-            -v "shopee-bot-logs-preview:/data/logs" `
-            -v "${{ github.workspace }}\unanswered_questions.txt:/app/unanswered_questions.txt" `
-            -v "${{ github.workspace }}\store_knowledge.txt:/app/store_knowledge.txt" `
-            -p 6081:6080 `
+          docker run -d \
+            --name shopee-bot-preview \
+            --network autochat_default \
+            --restart unless-stopped \
+            --shm-size=2g \
+            -e HEADLESS=false \
+            -e POLL_INTERVAL=10 \
+            -e VNC_PASSWORD=previewpass \
+            -e OLLAMA_URL=http://ollama:11434 \
+            -v "shopee-bot-profile-preview:/data/shopee-profile" \
+            -v "shopee-bot-logs-preview:/data/logs" \
+            -v "${{ github.workspace }}/unanswered_questions.txt:/app/unanswered_questions.txt" \
+            -v "${{ github.workspace }}/store_knowledge.txt:/app/store_knowledge.txt" \
+            -p 6081:6080 \
             "$IMAGE"
 
           echo ""
@@ -203,12 +144,13 @@ jobs:
   # ============================================
   cleanup-preview:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     steps:
       - name: Stop Preview Container
+        shell: bash
         run: |
           echo "PR closed. Stopping preview container..."
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
+          docker rm -f shopee-bot-preview || true
 
   # ============================================
   # Job 4: Deploy Production (HANYA push ke main)
@@ -216,24 +158,24 @@ jobs:
   deploy:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Deploy to Production
+        shell: bash
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           echo "Deploying shopee-autochat-bot:latest to production..."
 
           # 1. Matikan & Hapus container preview agar tidak berebut akun Shopee
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
+          docker rm -f shopee-bot-preview || true
 
           # 2. Deploy production via docker compose
-          $DOCKER_USER = $env:DOCKER_USERNAME
-          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
-          $env:DOCKER_USERNAME = $DOCKER_USER
+          DOCKER_USER=${DOCKER_USERNAME:-local}
+          export DOCKER_USERNAME=$DOCKER_USER
           docker compose up -d
 
           # Bersihkan image lama
