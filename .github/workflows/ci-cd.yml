@@ -55,6 +55,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Set Image Tag
         id: tag
         shell: python
@@ -115,6 +120,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Deploy Preview Container
         shell: python
         env:
@@ -160,6 +170,11 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: self-hosted
     steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Stop Preview Container
         shell: python
         run: |
@@ -177,6 +192,11 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Deploy to Production
         shell: python
