@@ -161,13 +161,13 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
                 "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
                 "2. JANGAN menjawab pertanyaan yang tidak ada di Pedoman Toko (contoh: minta foto asli, komplain, no resi, dll).\n"
                 "3. Jika pertanyaan pembeli TIDAK ADA persis jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-                "4. Jawablah langsung tanpa mengetik 'J:' atau awalan lainnya.\n\n"
+                "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n\n"
                 "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
                 "Pembeli: Barang ready?\n"
-                "Anda: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
+                "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
                 "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN:\n"
                 "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
-                "Anda: TIDAK TAHU"
+                "Jawaban: TIDAK TAHU"
             )
             resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
                 "model": "qwen2",
@@ -185,10 +185,17 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
                 reply = resp.json().get("message", {}).get("content", "").strip()
                 if reply:
                     # SAFETY FILTER: Clean up "J:" prefix or reject hallucinated formats
-                    if reply.startswith("J:"):
+                    reply_lower = reply.lower()
+                    if reply_lower.startswith("j:"):
                         reply = reply[2:].strip()
-                    elif reply.startswith("J :"):
+                    elif reply_lower.startswith("j :"):
                         reply = reply[3:].strip()
+                    elif reply_lower.startswith("anda:"):
+                        reply = reply[5:].strip()
+                    elif reply_lower.startswith("anda :"):
+                        reply = reply[6:].strip()
+                    elif reply_lower.startswith("jawaban:"):
+                        reply = reply[8:].strip()
                         
                     if "T:" in reply:
                         log.warning("Ollama hallucinated Q&A format. Forcing TIDAK TAHU.")
@@ -222,7 +229,10 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
             "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
             "2. DILARANG KERAS mengarang, menebak, atau menambahkan informasi yang tidak ada di Pedoman Toko (contoh: minta foto asli paket, komplain barang, dll).\n"
             "3. Jika pertanyaan pembeli TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-            "4. Jawablah dengan singkat dan ramah tanpa mengetik 'J:' di awal.\n\n"
+            "4. Jawablah dengan singkat dan ramah tanpa mengetik awalan 'J:', 'Anda:', atau 'Jawaban:'.\n\n"
+            "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
+            "Pembeli: Barang ready?\n"
+            "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
             f"Pertanyaan Pembeli: {buyer_message}\n"
             "Jawaban Anda:"
         )
@@ -235,6 +245,10 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
         )
         reply = response.text.strip()
         if reply:
+            reply_lower = reply.lower()
+            if reply_lower.startswith("j:"): reply = reply[2:].strip()
+            elif reply_lower.startswith("anda:"): reply = reply[5:].strip()
+            elif reply_lower.startswith("jawaban:"): reply = reply[8:].strip()
             return reply
     except Exception as e:
         log.warning("Gemini API error: %s", e)
@@ -280,10 +294,10 @@ function isSeller(el, container) {
         className.includes('self') || className.includes('right')) return true;
     
     let current = el;
-    for (let depth = 0; depth < 5; depth++) {
+    for (let depth = 0; depth < 15; depth++) {
         if (!current) break;
         const style = window.getComputedStyle(current);
-        if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || style.alignItems === 'flex-end') return true;
+        if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || style.alignItems === 'flex-end' || style.flexDirection === 'row-reverse') return true;
         
         const parentClass = (current.parentElement ? current.parentElement.className : '') || '';
         if (typeof parentClass === 'string') {
@@ -304,17 +318,21 @@ function isSeller(el, container) {
             const bubbleCenter = bRect.left + (bRect.width / 2);
             const containerCenter = cRect.left + (cRect.width / 2);
             
-            if (relLeft > 0.4 || (relRight < 0.1 && relLeft > 0.1) || bubbleCenter > containerCenter + 20) return true;
-            if (bubbleCenter < containerCenter - 20) return false;
+            if (relLeft > 0.4 || (relRight < 0.1 && relLeft > 0.1) || bubbleCenter > containerCenter + 10) return true;
+            if (bubbleCenter < containerCenter - 10) return false;
         }
     }
     
     const bubbleStyle = window.getComputedStyle(el);
-    const bgColor = bubbleStyle.backgroundColor;
+    const bgColor = bubbleStyle.backgroundColor || '';
     if (bgColor && (
         bgColor.includes('238') ||
         bgColor.includes('255, 87') ||
         bgColor.includes('ee4d2d') ||
+        bgColor.includes('232, 245') ||
+        bgColor.includes('234, 245') ||
+        bgColor.includes('214, 255') ||
+        bgColor.includes('204, 255') ||
         el.closest('[class*="seller"]') ||
         el.closest('[class*="right"]') ||
         el.closest('[class*="send"]')
