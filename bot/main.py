@@ -362,6 +362,17 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
 
     processed = 0
     try:
+        # 0a. Check for error "Klik untuk memuat ulang"
+        try:
+            reload_btn = page.locator("text=Klik untuk memuat ulang").first
+            if await reload_btn.is_visible(timeout=1000):
+                log.info("Detected 'Klik untuk memuat ulang' error. Clicking to reload...")
+                await reload_btn.click()
+                await page.wait_for_timeout(3000)
+                return 0  # Restart cycle
+        except Exception:
+            pass
+
         # 0. Dismiss "Restore pages?" dialog if present
         try:
             restore_btn = page.locator("button:has-text('Restore'), button:has-text('Pulihkan')").first
@@ -403,6 +414,15 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                 log.info("Clicking 'Semua Chat' tab...")
                 await semua_chat_tab.click()
                 await page.wait_for_timeout(2000)
+                
+                try:
+                    semua_pembeli = page.locator("text=Semua Pembeli").first
+                    if await semua_pembeli.is_visible():
+                        log.info("Clicking 'Semua Pembeli' tab after 'Semua Chat'...")
+                        await semua_pembeli.click()
+                        await page.wait_for_timeout(2000)
+                except Exception:
+                    pass
         except Exception as e:
             log.warning("Clicking 'Semua Chat' tab failed: %s", e)
 
