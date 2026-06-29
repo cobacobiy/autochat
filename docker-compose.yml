@@ -53,8 +53,9 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    ports:
-      - "11434:11434"
+    # Remove port mapping because it conflicts with host's native Windows Ollama which also uses 11434
+    # ports:
+    #   - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
