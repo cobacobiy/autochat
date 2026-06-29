@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    types: [opened, synchronize, reopened, closed]
 
 defaults:
   run:
@@ -15,6 +16,7 @@ jobs:
   # Job 1: Lint & Validasi Python
   # ============================================
   validate:
+    if: github.event.action != 'closed'
     runs-on: [self-hosted, windows]
     steps:
       - name: Checkout Code
@@ -99,6 +101,7 @@ jobs:
   # - Push main → tag: latest
   # ============================================
   build:
+    if: github.event.action != 'closed'
     needs: validate
     runs-on: [self-hosted, windows]
     outputs:
@@ -151,7 +154,7 @@ jobs:
   # ============================================
   deploy-preview:
     needs: build
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: [self-hosted, windows]
     steps:
       - name: Checkout Code
@@ -194,6 +197,18 @@ jobs:
           echo ""
           echo "Preview berhasil di-deploy!"
           echo "noVNC: http://<SERVER_IP>:6081"
+
+  # ============================================
+  # Cleanup Preview Container
+  # ============================================
+  cleanup-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: [self-hosted, windows]
+    steps:
+      - name: Stop Preview Container
+        run: |
+          echo "PR closed. Stopping preview container..."
+          try { docker rm -f shopee-bot-preview 2>$null } catch {}
 
   # ============================================
   # Job 4: Deploy Production (HANYA push ke main)
