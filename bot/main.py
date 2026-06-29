@@ -159,14 +159,18 @@ async def get_ai_reply_ollama(buyer_message: str) -> str:
                 f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
                 "ATURAN SUPER KETAT:\n"
                 "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-                "2. JANGAN menjawab pertanyaan yang tidak ada di Pedoman Toko (contoh: minta foto asli, komplain, no resi, dll).\n"
-                "3. Jika pertanyaan pembeli TIDAK ADA persis jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
+                "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
+                "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
                 "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n\n"
                 "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
                 "Pembeli: Barang ready?\n"
                 "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
-                "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN:\n"
+                "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
                 "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
+                "Jawaban: TIDAK TAHU\n\n"
+                "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
+                "Jawaban: TIDAK TAHU\n\n"
+                "Pembeli: kak kok pesanan saya belum sampai?\n"
                 "Jawaban: TIDAK TAHU"
             )
             resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
@@ -227,14 +231,18 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
             f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
             "ATURAN SUPER KETAT:\n"
             "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-            "2. DILARANG KERAS mengarang, menebak, atau menambahkan informasi yang tidak ada di Pedoman Toko (contoh: minta foto asli paket, komplain barang, dll).\n"
-            "3. Jika pertanyaan pembeli TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
+            "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
+            "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
             "4. Jawablah dengan singkat dan ramah tanpa mengetik awalan 'J:', 'Anda:', atau 'Jawaban:'.\n\n"
             "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
             "Pembeli: Barang ready?\n"
             "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
-            "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN:\n"
+            "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
             "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
+            "Jawaban: TIDAK TAHU\n\n"
+            "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
+            "Jawaban: TIDAK TAHU\n\n"
+            "Pembeli: kak kok pesanan saya belum sampai?\n"
             "Jawaban: TIDAK TAHU\n\n"
             f"Pertanyaan Pembeli: {buyer_message}\n"
             "Jawaban Anda:"
@@ -1287,6 +1295,24 @@ async def run_bot():
                 expired = [k for k, v in replied_cache.items() if now - v > 86400]
                 for k in expired:
                     del replied_cache[k]
+
+                # Auto-close extra tabs (e.g. captcha popups) and focus main tab
+                if len(context.pages) > 1:
+                    log.info("Detected %d open tabs. Closing extra tabs...", len(context.pages))
+                    for i in range(len(context.pages) - 1, 0, -1):
+                        try:
+                            await context.pages[i].close()
+                        except Exception as e:
+                            log.warning("Failed to close extra tab: %s", e)
+                    page = context.pages[0]
+                    await page.bring_to_front()
+                    await page.wait_for_timeout(1000)
+
+                # Check if main tab is stuck on captcha/error
+                if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
+                    log.warning("Main tab is on captcha/error page (%s). Navigating back to chat...", page.url)
+                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(3000)
 
                 # Dynamic routing check (detect if redirected to login page)
                 if "login" in page.url or "auth" in page.url:
