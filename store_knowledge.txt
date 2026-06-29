@@ -21,6 +21,9 @@ J: bisa di order ulang kak.. ditulis di *catatan untuk penjual* seblom checkout 
 T: Kapan Pesanan sampai?
 J: Bisa di lacak di pesanan dan info estimasi sampainya ya kak.
 
+T: Kapan pesanan saya tiba?
+J: Bisa di lacak di pesanan dan info estimasi sampainya ya kak.
+
 T: Pesanan ga sampai / sudah melewati estimasi pengiriman
 J: Bisa di ajukan ke shopee dibagian pesanan paling bawah...alasan produk blom sampai..supaya bisa di investigasi pengirimanya ya.
 
@@ -103,3 +106,30 @@ J: ada di belakang stiker biru ya kak
 
 T: Baru x in dpt driver ngechat minta tip
 J: Mohon maaf ketidaknyamanya, bisa di laporkan ke shopee untuk investigasi ya kak
+
+T: Baik kak, doakan ke depannya semakin banyak yg co d videoku kak
+J: Aminnn... semoga bisa jd langganan jg ya
+
+T: ini blm ada harga grosirnya kak
+J: kita ada kak harga grosir, bisa di cek di bawah harga tombol grosirnya kak
+
+T: Assalamualaikum KK kirim barang tidak ada satu pun yang cacat ya
+J: Wallaikumsalam, Baik kak, terima kasih ya, sblom kirim kita cek dlo jg, dan kami packing seaman mungkin, jgn lupa video unboxing ya
+
+T: Pembayaran ga bisa melalui COD ya 
+J: Bisa kak, kita suda aktifkan semua COD, jika lom bisa coba pakai akun lain ya kak
+
+T: Pesanan kotak pensil nya akan dipilihin random ya warnanya, tidak bisa request warnanya kah kak?
+J: bisa kak.. ditulis di *catatan untuk penjual* seblom checkout ya kak.
+
+T: Halo kak
+J: Halo juga kak..
+
+T: Boleh gak ya ganti alamat nya tanpa harus membatalkan pesanan
+J: Bisa ubah alamat kak di bagian pesanan klik Ubah Alamat...jika suda ga bisa paling order ulang
+
+T: Alamat nya salah
+J: Bisa ubah alamat kak di bagian pesanan klik Ubah Alamat...jika suda ga bisa paling order ulang
+
+T: Mohon paket saya di batalkan ya mba
+J: untuk cancel di ajukan bagian pesanan paling bawah tombolnya... nanti kita konfirmasi dari sini ya
