@@ -233,6 +233,9 @@ async def get_ai_reply_gemini(buyer_message: str) -> str:
             "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
             "Pembeli: Barang ready?\n"
             "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
+            "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN:\n"
+            "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
+            "Jawaban: TIDAK TAHU\n\n"
             f"Pertanyaan Pembeli: {buyer_message}\n"
             "Jawaban Anda:"
         )
