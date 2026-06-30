@@ -7,120 +7,74 @@ on:
     branches: [ main ]
     types: [opened, synchronize, reopened, closed]
 
-defaults:
-  run:
-    shell: powershell -ExecutionPolicy Bypass -command ". '{0}'"
-
 jobs:
   # ============================================
   # Job 1: Lint & Validasi Python
   # ============================================
   validate:
     if: github.event.action != 'closed'
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Locate or Install Python (Global)
-        run: |
-          $searchPaths = @(
-            "C:\Python311",
-            "C:\Python312",
-            "C:\Python313",
-            "C:\Program Files\Python311",
-            "C:\Program Files\Python312",
-            "C:\Users\data 2\AppData\Local\Programs\Python\Python313",
-            "C:\Users\acers\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none",
-            "C:\Users\acers\AppData\Local\Python\pythoncore-3.14-64"
-          )
-          $found = $false
-          foreach ($path in $searchPaths) {
-            try {
-              if (Test-Path "$path\python.exe" -ErrorAction Stop) {
-                echo "$path" >> $env:GITHUB_PATH
-                if (Test-Path "$path\Scripts" -ErrorAction Stop) {
-                  echo "$path\Scripts" >> $env:GITHUB_PATH
-                }
-                echo "Found Python at $path"
-                $found = $true
-                break
-              }
-            } catch {
-              echo "Skipping $path due to access/permission restrictions."
-            }
-          }
-
-          if (-not $found) {
-            echo "Python not found. Initiating dynamic global installation..."
-            $version = "3.11.9"
-            $url = "https://www.python.org/ftp/python/$version/python-$version-amd64.exe"
-            $installer = "$env:TEMP\python-installer.exe"
-            
-            echo "Downloading Python $version from $url..."
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $url -OutFile $installer
-            
-            echo "Installing Python $version to C:\Python311..."
-            $arguments = "/quiet InstallAllUsers=1 TargetDir=C:\Python311 PrependPath=0 AssociateFiles=0 Shortcuts=0 Include_doc=0"
-            $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-            
-            if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
-              Write-Error "Python installation failed with exit code $($process.ExitCode)"
-              exit 1
-            }
-            
-            echo "Python installed successfully."
-            
-            # Verify and add to path
-            if (Test-Path "C:\Python311\python.exe") {
-              echo "C:\Python311" >> $env:GITHUB_PATH
-              if (Test-Path "C:\Python311\Scripts") {
-                echo "C:\Python311\Scripts" >> $env:GITHUB_PATH
-              }
-            } else {
-              Write-Error "Python installation directory C:\Python311\python.exe not found after install!"
-              exit 1
-            }
-          }
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Verify Python & Upgrade Pip
+        shell: python
         run: |
-          python --version
-          python -m pip install --upgrade pip --break-system-packages
+          import subprocess
+          subprocess.run(["python", "--version"], check=True)
+          subprocess.run(["python", "-m", "pip", "install", "--upgrade", "pip", "--break-system-packages"], check=False)
 
       - name: Install Linter
-        run: python -m pip install ruff --break-system-packages
+        shell: python
+        run: |
+          import subprocess
+          subprocess.run(["python", "-m", "pip", "install", "ruff", "--break-system-packages"], check=False)
 
       - name: Validasi Kode (Lint)
-        run: python -m ruff check bot/
+        shell: python
+        run: |
+          import subprocess
+          subprocess.run(["python", "-m", "ruff", "check", "bot/"], check=True)
 
   # ============================================
   # Job 2: Build & Push Docker Image
-  # - PR        → tag: pr-<number>-<sha7>
-  # - Push main → tag: latest
   # ============================================
   build:
     if: github.event.action != 'closed'
     needs: validate
-    runs-on: [self-hosted, windows]
+    runs-on: self-hosted
     outputs:
       image_tag: ${{ steps.tag.outputs.IMAGE_TAG }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Set Image Tag
         id: tag
+        shell: python
         run: |
-          if ("${{ github.event_name }}" -eq "pull_request") {
-            $sha = "${{ github.event.pull_request.head.sha }}".Substring(0,7)
-            $TAG = "pr-${{ github.event.pull_request.number }}-$sha"
-          } else {
-            $TAG = "latest"
-          }
-          echo "IMAGE_TAG=$TAG" >> $env:GITHUB_OUTPUT
-          echo "Image tag: $TAG"
+          import os
+          event_name = "${{ github.event_name }}"
+          if event_name == "pull_request":
+              sha = "${{ github.event.pull_request.head.sha }}"[:7]
+              tag = f"pr-${{ github.event.pull_request.number }}-{sha}"
+          else:
+              sha = "${{ github.sha }}"[:7]
+              tag = f"main-{sha}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"IMAGE_TAG={tag}\n")
+          print(f"Image tag: {tag}")
 
       - name: Login to Docker Hub
         env:
@@ -133,21 +87,28 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker Build & Push
+        shell: python
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
         run: |
-          $DOCKER_USER = $env:DOCKER_USERNAME
-          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
-          $IMAGE = "$DOCKER_USER/shopee-autochat-bot:$env:IMAGE_TAG"
-          echo "Building: $IMAGE"
-          docker build -t "$IMAGE" ./bot
-          if ($DOCKER_USER -ne "local") {
-            docker push "$IMAGE"
-            echo "Image pushed: $IMAGE"
-          } else {
-            echo "Skipping push: Docker Hub credentials not configured. Image built locally as $IMAGE"
-          }
+          import os
+          import subprocess
+          
+          docker_user = os.environ.get("DOCKER_USERNAME")
+          if not docker_user:
+              docker_user = "local"
+              
+          image = f"{docker_user}/shopee-autochat-bot:{os.environ.get('IMAGE_TAG')}"
+          print(f"Building: {image}")
+          
+          subprocess.run(["docker", "build", "-t", image, "./bot"], check=True)
+          
+          if docker_user != "local":
+              subprocess.run(["docker", "push", image], check=True)
+              print(f"Image pushed: {image}")
+          else:
+              print(f"Skipping push: Docker Hub credentials not configured. Image built locally as {image}")
 
   # ============================================
   # Job 3: Deploy Preview (HANYA saat PR)
@@ -155,60 +116,79 @@ jobs:
   deploy-preview:
     needs: build
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, test]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Deploy Preview Container
+        shell: python
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
         run: |
-          echo "Deploying PR #${{ github.event.pull_request.number }} preview..."
-
-          # Pastikan Ollama berjalan di background untuk preview maupun production
-          docker compose up -d ollama ollama-init
-
-          # Hapus container preview lama
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
-
-          $DOCKER_USER = $env:DOCKER_USERNAME
-          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
-          $IMAGE = "$DOCKER_USER/shopee-autochat-bot:$env:IMAGE_TAG"
-
-          # Jalankan container preview (port 6081 supaya tidak bentrok dengan production)
-          docker run -d `
-            --name shopee-bot-preview `
-            --network autochat_default `
-            --restart unless-stopped `
-            --shm-size=2g `
-            -e HEADLESS=false `
-            -e POLL_INTERVAL=10 `
-            -e VNC_PASSWORD=previewpass `
-            -e OLLAMA_URL=http://ollama:11434 `
-            -v "shopee-bot-profile-preview:/data/shopee-profile" `
-            -v "shopee-bot-logs-preview:/data/logs" `
-            -v "${{ github.workspace }}\unanswered_questions.txt:/app/unanswered_questions.txt" `
-            -v "${{ github.workspace }}\store_knowledge.txt:/app/store_knowledge.txt" `
-            -p 6081:6080 `
-            "$IMAGE"
-
-          echo ""
-          echo "Preview berhasil di-deploy!"
-          echo "noVNC: http://<SERVER_IP>:6081"
+          import os
+          import subprocess
+          
+          print("Deploying PR #${{ github.event.pull_request.number }} preview...")
+          
+          subprocess.run(["docker", "compose", "up", "-d", "ollama", "ollama-init"], check=True)
+          subprocess.run(["docker", "rm", "-f", "shopee-bot-preview"], check=False)
+          
+          docker_user = os.environ.get("DOCKER_USERNAME") or "local"
+          image = f"{docker_user}/shopee-autochat-bot:{os.environ.get('IMAGE_TAG')}"
+          
+          if docker_user == "local":
+              print(f"Building {image} locally for preview because no Docker Hub registry is used...")
+              subprocess.run(["docker", "build", "-t", image, "./bot"], check=True)
+          else:
+              print(f"Pulling {image} from registry...")
+              subprocess.run(["docker", "pull", image], check=True)
+          
+          wk = os.environ.get("GITHUB_WORKSPACE")
+          cmd = [
+              "docker", "run", "-d",
+              "--name", "shopee-bot-preview",
+              "--network", "autochat_default",
+              "--restart", "unless-stopped",
+              "--shm-size=2g",
+              "-e", "HEADLESS=false",
+              "-e", "POLL_INTERVAL=10",
+              "-e", "VNC_PASSWORD=previewpass",
+              "-e", "OLLAMA_URL=http://ollama:11434",
+              "-v", "shopee-bot-profile-preview:/data/shopee-profile",
+              "-v", "shopee-bot-logs-preview:/data/logs",
+              "-v", f"{wk}/unanswered_questions.txt:/app/unanswered_questions.txt",
+              "-v", f"{wk}/store_knowledge.txt:/app/store_knowledge.txt",
+              "-p", "6081:6080",
+              image
+          ]
+          subprocess.run(cmd, check=True)
+          print("\nPreview berhasil di-deploy!\nnoVNC: http://<SERVER_IP>:6081")
 
   # ============================================
   # Cleanup Preview Container
   # ============================================
   cleanup-preview:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, test]
     steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Stop Preview Container
+        shell: python
         run: |
-          echo "PR closed. Stopping preview container..."
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
+          import subprocess
+          print("PR closed. Stopping preview container...")
+          subprocess.run(["docker", "rm", "-f", "shopee-bot-preview"], check=False)
 
   # ============================================
   # Job 4: Deploy Production (HANYA push ke main)
@@ -216,28 +196,40 @@ jobs:
   deploy:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, 226node2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Deploy to Production
+        shell: python
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
         run: |
-          echo "Deploying shopee-autochat-bot:latest to production..."
-
-          # 1. Matikan & Hapus container preview agar tidak berebut akun Shopee
-          try { docker rm -f shopee-bot-preview 2>$null } catch {}
-
-          # 2. Deploy production via docker compose
-          $DOCKER_USER = $env:DOCKER_USERNAME
-          if (-not $DOCKER_USER) { $DOCKER_USER = "local" }
-          $env:DOCKER_USERNAME = $DOCKER_USER
-          docker compose up -d
-
-          # Bersihkan image lama
-          docker image prune -f
-
-          echo "Deploy production selesai!"
-          echo "noVNC: http://<SERVER_IP>:6080"
+          import os
+          import subprocess
+          
+          print("Deploying shopee-autochat-bot:latest to production...")
+          subprocess.run(["docker", "rm", "-f", "shopee-bot-preview"], check=False)
+          
+          docker_user = os.environ.get("DOCKER_USERNAME") or "local"
+          env_vars = os.environ.copy()
+          env_vars["DOCKER_USERNAME"] = docker_user
+          env_vars["IMAGE_TAG"] = os.environ.get("IMAGE_TAG")
+          
+          if docker_user == "local":
+              print("Building and deploying locally because no Docker Hub registry is used...")
+              subprocess.run(["docker", "compose", "up", "-d", "--build"], env=env_vars, check=True)
+          else:
+              print("Pulling image from registry and deploying...")
+              subprocess.run(["docker", "compose", "pull"], env=env_vars, check=True)
+              subprocess.run(["docker", "compose", "up", "-d"], env=env_vars, check=True)
+          subprocess.run(["docker", "image", "prune", "-f"], check=False)
+          
+          print("Deploy production selesai!\nnoVNC: http://<SERVER_IP>:6080")
