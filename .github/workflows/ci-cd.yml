@@ -70,7 +70,8 @@ jobs:
               sha = "${{ github.event.pull_request.head.sha }}"[:7]
               tag = f"pr-${{ github.event.pull_request.number }}-{sha}"
           else:
-              tag = "latest"
+              sha = "${{ github.sha }}"[:7]
+              tag = f"main-{sha}"
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"IMAGE_TAG={tag}\n")
           print(f"Image tag: {tag}")
@@ -209,6 +210,7 @@ jobs:
         shell: python
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
         run: |
           import os
           import subprocess
@@ -219,6 +221,7 @@ jobs:
           docker_user = os.environ.get("DOCKER_USERNAME") or "local"
           env_vars = os.environ.copy()
           env_vars["DOCKER_USERNAME"] = docker_user
+          env_vars["IMAGE_TAG"] = os.environ.get("IMAGE_TAG")
           
           if docker_user == "local":
               print("Building and deploying locally because no Docker Hub registry is used...")
