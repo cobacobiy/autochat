@@ -10,27 +10,44 @@ import re
 import signal
 import sys
 import time
+import json
+import threading
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import httpx
 
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Page
 
 # ── Logging & Directory setup ──────────────────────────────────────────────────
 LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "bot.log")
+LOG_FORMAT = os.getenv("LOG_FORMAT", "text").lower()
 
-# If running under Supervisor, it already redirects stdout/stderr to the log file.
-# Adding a FileHandler in Python would cause duplicate entries in the log file.
 handlers = [logging.StreamHandler(sys.stdout)]
 if "SUPERVISOR_PROCESS_NAME" not in os.environ:
     handlers.append(logging.FileHandler(LOG_FILE))
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=handlers,
-)
+if LOG_FORMAT == "json":
+    import json as json_lib
+    class JsonFormatter(logging.Formatter):
+        def format(self, record):
+            return json_lib.dumps({
+                "ts": self.formatTime(record),
+                "level": record.levelname,
+                "msg": record.getMessage()
+            })
+    formatter = JsonFormatter()
+    for h in handlers:
+        h.setFormatter(formatter)
+    logging.basicConfig(level=logging.INFO, handlers=handlers)
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=handlers,
+    )
+
 log = logging.getLogger(__name__)
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -38,24 +55,47 @@ PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
 SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-
-# ── AI Provider Configuration ──────────────────────────────────────────────────
-AI_PROVIDER = os.getenv("AI_PROVIDER", "").lower()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2")
 
 # ── Safety / Limit Configuration ──────────────────────────────────────────────
 UNANSWERED_PATH = os.getenv("UNANSWERED_PATH", "/app/unanswered_questions.txt")
 MAX_DAILY_REPLIES = int(os.getenv("MAX_DAILY_REPLIES", "500"))
-DAILY_REPLY_COUNTER = 0
-DAILY_REPLY_DATE = ""
+MAX_CACHE_SIZE = int(os.getenv("MAX_CACHE_SIZE", "1000"))
 
-# Auto-detect provider if not explicitly configured but key is present
-if not AI_PROVIDER:
-    if GEMINI_API_KEY:
-        AI_PROVIDER = "gemini"
-    else:
-        AI_PROVIDER = "ollama"
+DAILY_REPLY_DATE = ""
+DAILY_REPLY_COUNTER = 0
+DAILY_SKIP_COUNT = 0
+DAILY_UNANSWERED_COUNT = 0
+DAILY_AI_REPLIED_COUNT = 0
+
+def cleanup_old_screenshots(log_dir, hours=24):
+    try:
+        now = time.time()
+        for f in os.listdir(log_dir):
+            if f.endswith('.png'):
+                filepath = os.path.join(log_dir, f)
+                if os.stat(filepath).st_mtime < now - hours * 3600:
+                    os.remove(filepath)
+    except Exception as e:
+        log.warning("Failed to clean up screenshots: %s", e)
+
+# ── HTTP Server Health Check ──────────────────────────────────────────────────
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        status = {
+            "status": "ok",
+            "daily_replies": DAILY_REPLY_COUNTER,
+            "daily_skips": DAILY_SKIP_COUNT,
+            "daily_unanswered": DAILY_UNANSWERED_COUNT,
+            "daily_ai_replied": DAILY_AI_REPLIED_COUNT,
+        }
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(status).encode())
+    def log_message(self, format, *args): pass
+
+threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 8080), HealthHandler).serve_forever(), daemon=True).start()
 
 # ── Knowledge Base / RAG Configuration ─────────────────────────────────────────
 KNOWLEDGE_PATH = os.getenv("KNOWLEDGE_PATH", "/app/store_knowledge.txt")
@@ -150,6 +190,12 @@ AUTO_REPLIES = {
 }
 DEFAULT_REPLY = "Ada yang bisa dibantu?"
 
+SKIP_MESSAGES = {
+    "ok", "oke", "baik", "baik kak", "baik ka", "oke kak", "oke ka",
+    "siap", "terima kasih", "makasih", "sami sami", "mks", "thx", "ty",
+    "ok kak", "ok ka", "sip", "siap kak", "siap ka", "makasih kak", "makasih ka",
+    "nuhun", "suwun"
+}
 
 # ── Bot logic ────────────────────────────────────────
 def get_auto_reply(message: str) -> str:
@@ -160,141 +206,78 @@ def get_auto_reply(message: str) -> str:
             return reply
     return "TIDAK TAHU"
 
-
-async def get_ai_reply_ollama(buyer_message: str) -> str:
-    """Generate reply using Ollama."""
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            system_prompt = (
-                "Anda adalah Customer Service toko. Anda HANYA boleh menjawab berdasarkan Pedoman Toko berikut ini:\n\n"
-                f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
-                "ATURAN SUPER KETAT:\n"
-                "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-                "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
-                "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-                "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n"
-                "5. JANGAN merangkai kalimat sendiri atau membuat kalimat sopan/formal panjang (seperti 'Mohon maaf atas ketidaknyamanan'). Jika pertanyaan bukan FAQ umum, WAJIB jawab TIDAK TAHU.\n\n"
-                "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
-                "Pembeli: Barang ready?\n"
-                "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
-                "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
-                "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
-                "Jawaban: TIDAK TAHU\n\n"
-                "Pembeli: Tolong diusahakan pagi ya kak pengirimannya\n"
-                "Jawaban: TIDAK TAHU\n\n"
-                "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
-                "Jawaban: TIDAK TAHU\n\n"
-                "Pembeli: kak kok pesanan saya belum sampai?\n"
-                "Jawaban: TIDAK TAHU"
-            )
-            resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
-                "model": "qwen2",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": buyer_message}
-                ],
-                "stream": False,
-                "options": {
-                    "temperature": 0.0,
-                    "top_p": 0.1
-                }
-            })
-            if resp.status_code == 200:
-                reply = resp.json().get("message", {}).get("content", "").strip()
-                if reply:
-                    # SAFETY FILTER: Clean up "J:" prefix or reject hallucinated formats
-                    reply_lower = reply.lower()
-                    if reply_lower.startswith("j:"):
-                        reply = reply[2:].strip()
-                    elif reply_lower.startswith("j :"):
-                        reply = reply[3:].strip()
-                    elif reply_lower.startswith("anda:"):
-                        reply = reply[5:].strip()
-                    elif reply_lower.startswith("anda :"):
-                        reply = reply[6:].strip()
-                    elif reply_lower.startswith("jawaban:"):
-                        reply = reply[8:].strip()
-                        
-                    if "T:" in reply:
-                        log.warning("Ollama hallucinated Q&A format. Forcing TIDAK TAHU.")
-                        return "TIDAK TAHU"
-                    return reply
-            log.warning("Ollama returned status code: %s, message: %s", resp.status_code, resp.text)
-    except Exception as e:
-        log.warning("Ollama error: %s", e)
-    
-    log.warning("Ollama gagal, menggunakan keyword auto-reply sebagai fallback")
-    return get_auto_reply(buyer_message)  # fallback
-
-
-async def get_ai_reply_gemini(buyer_message: str) -> str:
-    """Generate reply using Google Gemini API."""
-    try:
-        if not GEMINI_API_KEY:
-            log.warning("GEMINI_API_KEY tidak dikonfigurasi, menggunakan auto-reply bawaan.")
-            return get_auto_reply(buyer_message)
-        
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        
-        # Run in executor to prevent blocking the async event loop
-        loop = asyncio.get_running_loop()
-        prompt_text = (
-            "Anda adalah Customer Service toko. Anda HANYA boleh menjawab berdasarkan Pedoman Toko berikut ini:\n\n"
-            f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
-            "ATURAN SUPER KETAT:\n"
-            "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-            "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
-            "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-            "4. Jawablah dengan singkat dan ramah tanpa mengetik awalan 'J:', 'Anda:', atau 'Jawaban:'.\n"
-            "5. JANGAN merangkai kalimat sendiri atau membuat kalimat sopan/formal panjang (seperti 'Mohon maaf atas ketidaknyamanan'). Jika pertanyaan bukan FAQ umum, WAJIB jawab TIDAK TAHU.\n\n"
-            "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
-            "Pembeli: Barang ready?\n"
-            "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
-            "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
-            "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
-            "Jawaban: TIDAK TAHU\n\n"
-            "Pembeli: Tolong diusahakan pagi ya kak pengirimannya\n"
-            "Jawaban: TIDAK TAHU\n\n"
-            "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
-            "Jawaban: TIDAK TAHU\n\n"
-            "Pembeli: kak kok pesanan saya belum sampai?\n"
-            "Jawaban: TIDAK TAHU\n\n"
-            f"Pertanyaan Pembeli: {buyer_message}\n"
-            "Jawaban Anda:"
-        )
-        response = await loop.run_in_executor(
-            None,
-            lambda: model.generate_content(
-                prompt_text,
-                generation_config=genai.types.GenerationConfig(temperature=0.0)
-            )
-        )
-        reply = response.text.strip()
-        if reply:
-            reply_lower = reply.lower()
-            if reply_lower.startswith("j:"):
-                reply = reply[2:].strip()
-            elif reply_lower.startswith("anda:"):
-                reply = reply[5:].strip()
-            elif reply_lower.startswith("jawaban:"):
-                reply = reply[8:].strip()
-            return reply
-    except Exception as e:
-        log.warning("Gemini API error: %s", e)
-    log.warning("Gemini gagal, menggunakan keyword auto-reply sebagai fallback")  
-    return get_auto_reply(buyer_message)  # fallback
-
+def build_system_prompt() -> str:
+    return (
+        "Anda adalah Customer Service toko. Anda HANYA boleh menjawab berdasarkan Pedoman Toko berikut ini:\n\n"
+        f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
+        "ATURAN SUPER KETAT:\n"
+        "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
+        "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
+        "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
+        "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n"
+        "5. JANGAN merangkai kalimat sendiri atau membuat kalimat sopan/formal panjang (seperti 'Mohon maaf atas ketidaknyamanan'). Jika pertanyaan bukan FAQ umum, WAJIB jawab TIDAK TAHU.\n\n"
+        "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
+        "Pembeli: Barang ready?\n"
+        "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
+        "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
+        "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
+        "Jawaban: TIDAK TAHU\n\n"
+        "Pembeli: Tolong diusahakan pagi ya kak pengirimannya\n"
+        "Jawaban: TIDAK TAHU\n\n"
+        "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
+        "Jawaban: TIDAK TAHU\n\n"
+        "Pembeli: kak kok pesanan saya belum sampai?\n"
+        "Jawaban: TIDAK TAHU"
+    )
 
 async def get_ai_reply(buyer_message: str) -> str:
-    """Route the request to the active AI provider (gemini or ollama)."""
-    if AI_PROVIDER == "gemini":
-        log.info("Menggunakan Gemini API untuk membalas...")
-        return await get_ai_reply_gemini(buyer_message)
-    else:
-        log.info("Menggunakan Ollama lokal untuk membalas...")
-        return await get_ai_reply_ollama(buyer_message)
+    """Generate reply using Ollama (Gemini fallback removed)."""
+    log.info("Menggunakan Ollama lokal untuk membalas...")
+    system_prompt = build_system_prompt()
+    
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
+                    "model": OLLAMA_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": buyer_message}
+                    ],
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.0,
+                        "top_p": 0.1
+                    }
+                })
+                if resp.status_code == 200:
+                    reply = resp.json().get("message", {}).get("content", "").strip()
+                    if reply:
+                        reply_lower = reply.lower()
+                        if reply_lower.startswith("j:"):
+                            reply = reply[2:].strip()
+                        elif reply_lower.startswith("j :"):
+                            reply = reply[3:].strip()
+                        elif reply_lower.startswith("anda:"):
+                            reply = reply[5:].strip()
+                        elif reply_lower.startswith("anda :"):
+                            reply = reply[6:].strip()
+                        elif reply_lower.startswith("jawaban:"):
+                            reply = reply[8:].strip()
+                            
+                        if "t:" in reply_lower:
+                            log.warning("Ollama hallucinated Q&A format. Forcing TIDAK TAHU.")
+                            return "TIDAK TAHU"
+                        return reply
+                log.warning("Ollama attempt %d returned status code: %s, message: %s", attempt + 1, resp.status_code, resp.text)
+        except Exception as e:
+            log.warning("Ollama attempt %d error: %s", attempt + 1, e)
+        
+        if attempt < 1:
+            await asyncio.sleep(2)
+            
+    log.warning("Ollama gagal, menggunakan keyword auto-reply sebagai fallback")
+    return get_auto_reply(buyer_message)
 
 
 def is_assistant_ai_msg(text: str) -> bool:
@@ -377,159 +360,414 @@ function isSeller(el, container) {
 
 
 
-async def handle_unread_chats(page, replied_cache: dict) -> int:
-    """
-    Find unread and Assistant AI chats, and reply to each one.
-    Returns the number of chats processed.
-    """
-    global DAILY_REPLY_COUNTER, DAILY_REPLY_DATE
+
+async def setup_chat_view(page) -> bool:
+    try:
+        reload_btn = page.locator("text=Klik untuk memuat ulang").first
+        if await reload_btn.is_visible(timeout=1000):
+            log.info("Detected 'Klik untuk memuat ulang' error. Clicking to reload...")
+            await reload_btn.click()
+            await page.wait_for_timeout(3000)
+            return False
+    except Exception:
+        pass
+
+    try:
+        restore_btn = page.locator("button:has-text('Restore'), button:has-text('Pulihkan')").first
+        if await restore_btn.is_visible(timeout=1000):
+            log.info("Dismissing 'Restore pages?' dialog...")
+            await restore_btn.click()
+            await page.wait_for_timeout(2000)
+    except Exception:
+        pass
+
+    try:
+        close_btn = page.locator("[aria-label='Close'], button:has-text('×'), .close-button").first
+        if await close_btn.is_visible(timeout=1000):
+            log.info("Closing restore pages pop-up via close button...")
+            await close_btn.click()
+            await page.wait_for_timeout(1000)
+    except Exception:
+        pass
+
+    try:
+        trigger_penjual = page.locator("text=Chat Penjual").first
+        trigger_pembeli = page.locator("text=Chat Pembeli").first
+        if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
+            log.info("Detected 'Chat Penjual' active. Clicking to switch to 'Chat Pembeli'...")
+            await trigger_penjual.click()
+            await page.wait_for_timeout(1000)
+            option_pembeli = page.locator("text=Chat Pembeli").last
+            await option_pembeli.click()
+            await page.wait_for_timeout(2000)
+    except Exception as e:
+        log.warning("Dropdown check/switch failed: %s", e)
+
+    try:
+        semua_chat_tab = page.locator("text=Semua Chat").first
+        if await semua_chat_tab.is_visible():
+            log.info("Clicking 'Semua Chat' tab...")
+            await semua_chat_tab.click()
+            await page.wait_for_timeout(2000)
+            try:
+                semua_pembeli = page.locator("text=Semua Pembeli").first
+                if await semua_pembeli.is_visible():
+                    log.info("Clicking 'Semua Pembeli' tab after 'Semua Chat'...")
+                    await semua_pembeli.click()
+                    await page.wait_for_timeout(2000)
+            except Exception:
+                pass
+    except Exception as e:
+        log.warning("Clicking 'Semua Chat' tab failed: %s", e)
+
+    try:
+        items_found = await page.evaluate(r'''() => {
+            const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
+            if (cells.length > 0) return true;
+            const divs = [...document.querySelectorAll('div')];
+            return divs.some(div => {
+                const text = div.textContent || '';
+                const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
+                                     text.includes('Yesterday') || 
+                                     text.includes('Kemarin') ||
+                                     /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
+                const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
+                if (hasTimestamp && text.length < 300 && isNotOrder) {
+                    const rect = div.getBoundingClientRect();
+                    return rect.height > 40 && rect.height < 120 && rect.width > 100;
+                }
+                return false;
+            });
+        }''')
+        
+        if not items_found:
+            semua_pembeli = page.locator("text=Semua Pembeli").first
+            if await semua_pembeli.is_visible():
+                log.info("No chat items detected. Clicking 'Semua Pembeli' section to expand...")
+                await semua_pembeli.click()
+                await page.wait_for_timeout(2000)
+            else:
+                belum_dibalas = page.locator("text=Belum Dibalas").first
+                if await belum_dibalas.is_visible():
+                    log.info("No chat items detected. Clicking 'Belum Dibalas' section to expand...")
+                    await belum_dibalas.click()
+                    await page.wait_for_timeout(2000)
+    except Exception as e:
+        log.warning("Expanding sections failed: %s", e)
+    return True
+
+async def read_riwayat_chat(page) -> str:
+    try:
+        history_link_selectors = [
+            "text=Lihat Semua Riwayat Chat",
+            "a:has-text('Lihat Semua Riwayat Chat')",
+            "text=Lihat semua riwayat chat",
+            "span:has-text('Lihat Semua Riwayat Chat')",
+            "div:has-text('Lihat Semua Riwayat Chat')",
+        ]
+        history_link = None
+        for sel in history_link_selectors:
+            try:
+                loc = page.locator(sel).first
+                if await loc.is_visible():
+                    history_link = loc
+                    break
+            except Exception:
+                pass
+        
+        riwayat_buyer_message = ""
+        if history_link:
+            log.info("Ditemukan link Riwayat Chat. Mengklik...")
+            try:
+                await history_link.click(timeout=3000)
+            except Exception as e:
+                log.warning("Gagal click normal (%s), mencoba force click via JS...", e)
+                await history_link.evaluate("node => node.click()")
+            
+            await page.wait_for_timeout(1000)
+            try:
+                await page.wait_for_selector(
+                    'div[role="dialog"], [class*="modal"]', 
+                    state="visible", 
+                    timeout=5000
+                )
+            except Exception:
+                log.warning("Popup Riwayat Chat tidak muncul dalam 5 detik")
+            
+            extracted_msg = await page.evaluate(r'''() => {
+                ''' + IS_SELLER_JS + r'''
+                let modal = null;
+                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
+                for (const d of dialogs) {
+                    if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                        modal = d;
+                        break;
+                    }
+                }
+                const container = modal || document.body;
+                const bubbles = container.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble, [class*="message_text"], [class*="message-text"]');
+                
+                const buyerMessages = [];
+                for (const el of bubbles) {
+                    const text = (el.textContent || '').trim();
+                    if (!text) continue;
+                    
+                    if (text.includes("Asisten AI Toko") || text.includes("Pesan kakak suda masuk") || text.includes("Hello dear! What would you like to ask?")) {
+                        continue;
+                    }
+                    
+                    if (!isSeller(el, container)) {
+                        buyerMessages.push(text);
+                    }
+                }
+                if (buyerMessages.length > 0) {
+                    return buyerMessages[buyerMessages.length - 1];
+                }
+                return "";
+            }''')
+            
+            if extracted_msg:
+                riwayat_buyer_message = extracted_msg.strip()
+                log.info("Ekstrak riwayat chat pembeli berhasil: %s", riwayat_buyer_message[:100])
+            
+            close_selectors = [
+                "button[aria-label='Close']", "button[aria-label='Tutup']",
+                ".shopee-react-modal__close", ".shopee-react-modal__close-btn",
+                ".shopee-popup__close-btn", "[class*='modal'] button[class*='close']",
+                "[class*='dialog'] button[class*='close']", "button:has-text('✕')",
+                "button:has-text('×')", ".icon-close", "[class*='close']",
+            ]
+            close_btn = None
+            for sel in close_selectors:
+                try:
+                    loc = page.locator(f"[role='dialog'] {sel}").first
+                    if await loc.is_visible():
+                        close_btn = loc
+                        break
+                except Exception:
+                    pass
+            
+            if not close_btn:
+                for sel in close_selectors:
+                    try:
+                        loc = page.locator(sel).first
+                        if await loc.is_visible():
+                            close_btn = loc
+                            break
+                    except Exception:
+                        pass
+                        
+            if close_btn:
+                log.info("Menutup popup Riwayat Chat...")
+                try:
+                    await close_btn.click(timeout=2000)
+                except Exception:
+                    await close_btn.evaluate("node => node.click()")
+            else:
+                log.warning("Close button popup tidak ditemukan! Mencoba Escape...")
+                await page.keyboard.press("Escape")
+            
+            await page.wait_for_timeout(1000)
+            await page.evaluate(r'''() => {
+                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
+                dialogs.forEach(d => {
+                    if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                        d.remove();
+                    }
+                });
+            }''')
+
+            await page.wait_for_timeout(500)
+            still_open = await page.evaluate(r'''() => {
+                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"]');
+                for (const d of dialogs) {
+                    if (d.textContent && d.textContent.includes("Riwayat Chat")) return true;
+                }
+                return false;
+            }''')
+            if still_open:
+                log.warning("Popup Riwayat Chat masih terbuka! Force close via Escape + DOM removal...")
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(500)
+                await page.evaluate(r'''() => {
+                    document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="overlay"], [class*="mask"]').forEach(d => d.remove());
+                }''')
+                await page.wait_for_timeout(500)
+        return riwayat_buyer_message
+    except Exception as e:
+        log.warning("Gagal membaca Riwayat Chat: %s", e)
+        return ""
+
+async def extract_chat_history(page) -> list:
+    chat_history = await page.evaluate(r'''() => {
+        ''' + IS_SELLER_JS + r'''
+        const messageContainers = [...document.querySelectorAll('div')].filter(el => {
+            const className = el.className || '';
+            const style = window.getComputedStyle(el);
+            return (style.overflowY === 'scroll' || style.overflowY === 'auto' || className.includes('message') || className.includes('chat-content') || className.includes('conversation'))
+                && el.querySelectorAll('[class*="message"], [class*="bubble"]').length > 0;
+        });
+        
+        let bestContainer = null;
+        let maxBubbles = 0;
+        for (const container of messageContainers) {
+            const bubbles = container.querySelectorAll('[class*="message"], [class*="bubble"]');
+            if (bubbles.length > maxBubbles) {
+                maxBubbles = bubbles.length;
+                bestContainer = container;
+            }
+        }
+        
+        if (!bestContainer) bestContainer = document.body;
+        
+        const bubbles = bestContainer.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble');
+        
+        const history = [];
+        for (const b of bubbles) {
+            if (b.closest && b.closest('[class*="history"], [class*="riwayat"]')) continue;
+            const text = (b.textContent || '').trim();
+            if (!text) continue;
+            if (text.includes('Lihat Semua Riwayat Chat')) continue;
+            
+            history.push({ text: text, isSeller: isSeller(b, bestContainer) });
+        }
+        
+        const cleanHistory = [];
+        for (const item of history) {
+            if (cleanHistory.length > 0) {
+                const last = cleanHistory[cleanHistory.length - 1];
+                if (last.text.includes(item.text) && last.isSeller === item.isSeller) continue;
+                if (item.text.includes(last.text) && last.isSeller === item.isSeller) {
+                    cleanHistory[cleanHistory.length - 1] = item;
+                    continue;
+                }
+            }
+            cleanHistory.push(item);
+        }
+        return cleanHistory;
+    }''')
+    
+    if not chat_history:
+        log.warning("JS history extraction returned empty, trying fallback message selector...")
+        message_selector = "[data-cy^='webchat-message'], .message-bubble, [class*='message-bubble'], [class*='message-row'], [class*='message-item']"
+        messages = await page.query_selector_all(message_selector)
+        container = await page.query_selector("[class*='chat-content'], [class*='conversation']")
+        for msg in messages:
+            try:
+                msg_text = await msg.inner_text()
+                is_seller = await page.evaluate(
+                    "([el, c]) => {" + IS_SELLER_JS + " return isSeller(el, c); }",
+                    [msg, container]
+                )
+                chat_history.append({"text": msg_text, "isSeller": bool(is_seller)})
+            except Exception as e:
+                log.warning("Gagal memproses pesan fallback: %s", e)
+    return chat_history
+
+async def send_reply(page, reply_text: str, username: str) -> bool:
+    input_box = None
+    input_sel_used = "none"
+
+    ce_selectors = [
+        "[data-cy='webchat-conversation-detail-input'] [contenteditable='true']",
+        "[data-testid='chat-input'] [contenteditable='true']",
+        ".chat-input [contenteditable='true']",
+        "[class*='chat-input'] [contenteditable='true']",
+        "[class*='composer'] [contenteditable='true']",
+        "[class*='editor'] [contenteditable='true']",
+    ]
+    for sel in ce_selectors:
+        input_box = await page.query_selector(sel)
+        if input_box:
+            input_sel_used = sel
+            break
+
+    if not input_box:
+        all_editable = await page.query_selector_all("[contenteditable='true']")
+        if all_editable:
+            best = None
+            best_y = -1
+            for el in all_editable:
+                try:
+                    bbox = await el.bounding_box()
+                    if bbox and bbox['y'] > best_y:
+                        best_y = bbox['y']
+                        best = el
+                except Exception:
+                    pass
+            if best:
+                input_box = best
+                input_sel_used = f"position-fallback (y={best_y})"
+
+    if not input_box:
+        input_box = await page.query_selector("textarea")
+        if input_box:
+            input_sel_used = "textarea-fallback"
+
+    if not input_box:
+        try:
+            page_content = await page.content()
+            if "Chat telah diakhiri otomatis" in page_content or "Asisten AI Toko" in page_content:
+                log.info("Chat with '%s' is closed or delegated to Shopee's AI Assistant. Skipping reply.", username)
+                return True
+        except Exception as ce_err:
+            log.warning("Failed to check page content for closed chat: %s", ce_err)
+        log.warning("Could not find chat input box — Shopee may have changed its DOM.")
+        return False
+
+    log.info("Found input box via: %s", input_sel_used)
+    await input_box.click()
+    await page.wait_for_timeout(300)
+
+    tag_name = await input_box.evaluate("el => el.tagName.toLowerCase()")
+    if tag_name in ("input", "textarea"):
+        await input_box.fill(reply_text)
+    else:
+        await input_box.evaluate("el => { el.textContent = ''; el.focus(); }")
+        await page.wait_for_timeout(200)
+        await page.keyboard.type(reply_text, delay=30)
+
+    await page.wait_for_timeout(300)
+    await page.keyboard.press("Enter")
+    await page.wait_for_timeout(1000)
+
+    input_text_after = await input_box.evaluate("el => (el.value || el.textContent || '').trim()")
+    if input_text_after:
+        log.info("Enter didn't send message (input still has text), trying Send button...")
+        try:
+            send_button = page.locator(
+                "button:has-text('Kirim'), button:has-text('Send'), [data-testid='send-button'], button.send-btn, button[class*='send'], [class*='send'] button, [class*='composer'] button"
+            ).first
+            if await send_button.is_visible(timeout=2000):
+                await send_button.click()
+                await page.wait_for_timeout(800)
+                log.info("Sent via Send button click")
+            else:
+                log.warning("Send button not visible either")
+        except Exception as send_err:
+            log.warning("Send button click failed: %s", send_err)
+    else:
+        log.info("=== REPLY RESULT: SUCCESS (sent via Enter) ===")
+    return True
+
+async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
+    global DAILY_REPLY_COUNTER, DAILY_REPLY_DATE, DAILY_SKIP_COUNT, DAILY_UNANSWERED_COUNT, DAILY_AI_REPLIED_COUNT
     current_date = time.strftime("%Y-%m-%d")
     if DAILY_REPLY_DATE != current_date:
+        if DAILY_REPLY_DATE:
+            log.info("📊 Daily summary [%s]: replied=%d, skipped=%d, unanswered=%d", 
+                     DAILY_REPLY_DATE, DAILY_AI_REPLIED_COUNT, DAILY_SKIP_COUNT, DAILY_UNANSWERED_COUNT)
         DAILY_REPLY_DATE = current_date
         DAILY_REPLY_COUNTER = 0
+        DAILY_SKIP_COUNT = 0
+        DAILY_UNANSWERED_COUNT = 0
+        DAILY_AI_REPLIED_COUNT = 0
 
     processed = 0
     try:
-        # 0a. Check for error "Klik untuk memuat ulang"
-        try:
-            reload_btn = page.locator("text=Klik untuk memuat ulang").first
-            if await reload_btn.is_visible(timeout=1000):
-                log.info("Detected 'Klik untuk memuat ulang' error. Clicking to reload...")
-                await reload_btn.click()
-                await page.wait_for_timeout(3000)
-                return 0  # Restart cycle
-        except Exception:
-            pass
-
-        # 0. Dismiss "Restore pages?" dialog if present
-        try:
-            restore_btn = page.locator("button:has-text('Restore'), button:has-text('Pulihkan')").first
-            if await restore_btn.is_visible(timeout=1000):
-                log.info("Dismissing 'Restore pages?' dialog...")
-                await restore_btn.click()
-                await page.wait_for_timeout(2000)
-        except Exception:
-            pass
-
-        try:
-            close_btn = page.locator("[aria-label='Close'], button:has-text('×'), .close-button").first
-            if await close_btn.is_visible(timeout=1000):
-                log.info("Closing restore pages pop-up via close button...")
-                await close_btn.click()
-                await page.wait_for_timeout(1000)
-        except Exception:
-            pass
-
-        # 1. Ensure top dropdown is set to "Chat Pembeli"
-        try:
-            trigger_penjual = page.locator("text=Chat Penjual").first
-            trigger_pembeli = page.locator("text=Chat Pembeli").first
-            
-            if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
-                log.info("Detected 'Chat Penjual' active. Clicking to switch to 'Chat Pembeli'...")
-                await trigger_penjual.click()
-                await page.wait_for_timeout(1000)
-                option_pembeli = page.locator("text=Chat Pembeli").last
-                await option_pembeli.click()
-                await page.wait_for_timeout(2000)
-        except Exception as e:
-            log.warning("Dropdown check/switch failed: %s", e)
-
-        # 2. Click "Semua Chat" tab if visible to ensure we process all chats
-        try:
-            semua_chat_tab = page.locator("text=Semua Chat").first
-            if await semua_chat_tab.is_visible():
-                log.info("Clicking 'Semua Chat' tab...")
-                await semua_chat_tab.click()
-                await page.wait_for_timeout(2000)
-                
-                try:
-                    semua_pembeli = page.locator("text=Semua Pembeli").first
-                    if await semua_pembeli.is_visible():
-                        log.info("Clicking 'Semua Pembeli' tab after 'Semua Chat'...")
-                        await semua_pembeli.click()
-                        await page.wait_for_timeout(2000)
-                except Exception:
-                    pass
-        except Exception as e:
-            log.warning("Clicking 'Semua Chat' tab failed: %s", e)
-
-        # Ensure chat list section header is expanded (e.g. "Semua Pembeli" or "Belum Dibalas")
-        try:
-            # Check if there are any chat items visible in the DOM.
-            items_found = await page.evaluate(r"""() => {
-                const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
-                if (cells.length > 0) return true;
-                const divs = [...document.querySelectorAll('div')];
-                return divs.some(div => {
-                    const text = div.textContent || '';
-                    const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
-                                         text.includes('Yesterday') || 
-                                         text.includes('Kemarin') ||
-                                         /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-                    const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
-                    if (hasTimestamp && text.length < 300 && isNotOrder) {
-                        const rect = div.getBoundingClientRect();
-                        return rect.height > 40 && rect.height < 120 && rect.width > 100;
-                    }
-                    return false;
-                });
-            }""")
-            
-            if not items_found:
-                semua_pembeli = page.locator("text=Semua Pembeli").first
-                if await semua_pembeli.is_visible():
-                    log.info("No chat items detected. Clicking 'Semua Pembeli' section to expand...")
-                    await semua_pembeli.click()
-                    await page.wait_for_timeout(2000)
-                else:
-                    belum_dibalas = page.locator("text=Belum Dibalas").first
-                    if await belum_dibalas.is_visible():
-                        log.info("No chat items detected. Clicking 'Belum Dibalas' section to expand...")
-                        await belum_dibalas.click()
-                        await page.wait_for_timeout(2000)
-        except Exception as e:
-            log.warning("Expanding sections failed: %s", e)
-
-        # Debug DOM and Frames (only when DEBUG environment variable is set)
-        if os.getenv("DEBUG"):
-            try:
-                log.info("Page frames count: %d", len(page.frames))
-                debug_target = os.getenv("DEBUG_TARGET", "")
-                for i, f in enumerate(page.frames):
-                    log.info("Frame #%d URL: %s, Name: %s", i, f.url, f.name)
-                    if debug_target:
-                        try:
-                            debug_info = await f.evaluate(r"""(target) => {
-                                const results = [];
-                                const elements = [...document.querySelectorAll('*')].filter(e => e.textContent.includes(target));
-                                for (const el of elements) {
-                                    if (el.childNodes.length === 1 || el.classList.length > 0) {
-                                        let current = el;
-                                        let path = [];
-                                        while (current && path.length < 5) {
-                                            path.push(current.tagName + '.' + [...current.classList].join('.'));
-                                            current = current.parentElement;
-                                        }
-                                        results.push(path.join(' < '));
-                                    }
-                                }
-                                return results.slice(0, 5);
-                            }""", debug_target)
-                            if debug_info:
-                                log.info("Frame #%d DOM DEBUG (matching '%s'): %s", i, debug_target, debug_info)
-                        except Exception as fe:
-                            log.warning("Frame #%d eval failed: %s", i, fe)
-            except Exception as e:
-                log.warning("DOM Debug failed: %s", e)
-
-            # Take a screenshot for visual debugging
-            try:
-                screenshot_path = os.path.join(LOG_DIR, "screenshot.png")
-                await page.screenshot(path=screenshot_path)
-                log.info("Saved debug screenshot to: %s", screenshot_path)
-            except Exception as ss_err:
-                log.warning("Failed to save debug screenshot: %s", ss_err)
+        setup_success = await setup_chat_view(page)
+        if not setup_success:
+            return 0
 
         visited_usernames = set()
         max_attempts = 30
@@ -579,16 +817,9 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                 index = target_index
                 item_text = await item.inner_text()
                 
-                # Check for unread badge or indicator
-                has_unread = await item.query_selector(
-                    ".unread-badge, .unread-count, [class*='unread']"
-                )
-                
-                # Check if preview text contains AI indicator
+                has_unread = await item.query_selector(".unread-badge, .unread-count, [class*='unread']")
                 has_ai = is_assistant_ai_msg(item_text)
                 
-                # Smart Skip: Skip clicking if it's already replied by the seller (us) 
-                # and doesn't contain an unread indicator or AI response.
                 if not has_unread and not has_ai:
                     preview_lower = item_text.lower()
                     if (
@@ -607,9 +838,8 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
                 
-                # Bersihkan overlay/dialog yang mungkin tersisa sebelum klik chat item berikutnya
                 try:
-                    await page.evaluate(r"""() => {
+                    await page.evaluate(r'''() => {
                         document.querySelectorAll('[class*="overlay"], [class*="mask"], [class*="backdrop"]').forEach(el => {
                             if (el.style.position === 'fixed' || el.style.position === 'absolute') {
                                 el.remove();
@@ -618,314 +848,60 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                         document.querySelectorAll('div[role="dialog"]').forEach(d => {
                             if (d.textContent && d.textContent.includes("Riwayat Chat")) d.remove();
                         });
-                    }""")
+                    }''')
                 except Exception:
                     pass
 
-                # Use Playwright native click to ensure React events fire correctly
                 try:
                     await item.click(timeout=3000)
                 except Exception:
                     await item.evaluate("node => node.click()")
                 await page.wait_for_timeout(2000)
 
-                riwayat_buyer_message = ""  # akan diisi di Langkah 1 jika ada riwayat
-
-                # Close any blocking popup/modal
                 try:
-                    popup_close_selectors = [
-                        "button.shopee-popup__close-btn",
-                        ".shopee-modal__close",
-                        "[class*='popup'] button",
-                        "[class*='modal'] button",
-                        ".icon-close"
-                    ]
+                    popup_close_selectors = ["button.shopee-popup__close-btn", ".shopee-modal__close", "[class*='popup'] button", "[class*='modal'] button", ".icon-close"]
                     for sel in popup_close_selectors:
                         try:
                             popup_close = page.locator(sel).first
                             if await popup_close.is_visible():
-                                log.info("Closing popup using selector '%s'...", sel)
                                 await popup_close.click()
                                 await page.wait_for_timeout(1000)
                                 break
                         except Exception:
                             pass
-                except Exception as e:
-                    log.warning("Popup closing attempt failed: %s", e)
+                except Exception:
+                    pass
 
-                # Click "Lihat History Chat" or "Lihat Pesan Sebelumnya" button
                 try:
-                    history_btn_selectors = [
-                        "text=Lihat History Chat",
-                        "text=Lihat Pesan Sebelumnya",
-                        "button:has-text('History')",
-                        "button:has-text('Sebelumnya')"
-                    ]
+                    history_btn_selectors = ["text=Lihat History Chat", "text=Lihat Pesan Sebelumnya", "button:has-text('History')", "button:has-text('Sebelumnya')"]
                     for sel in history_btn_selectors:
                         try:
                             history_btn = page.locator(sel).first
                             if await history_btn.is_visible():
-                                log.info("Clicking '%s' button to load chat history...", sel)
                                 await history_btn.click()
                                 await page.wait_for_timeout(2000)
                                 break
                         except Exception:
                             pass
-                except Exception as e:
-                    log.warning("Loading chat history button click failed: %s", e)
+                except Exception:
+                    pass
 
-                # Langkah 1: Deteksi "Riwayat Chat" dan Baca Isinya
-                try:
-                    history_link_selectors = [
-                        "text=Lihat Semua Riwayat Chat",
-                        "a:has-text('Lihat Semua Riwayat Chat')",
-                        "text=Lihat semua riwayat chat",
-                        "span:has-text('Lihat Semua Riwayat Chat')",
-                        "div:has-text('Lihat Semua Riwayat Chat')",
-                    ]
-                    history_link = None
-                    for sel in history_link_selectors:
-                        try:
-                            loc = page.locator(sel).first
-                            if await loc.is_visible():
-                                history_link = loc
-                                break
-                        except Exception:
-                            pass
-                    
-                    if history_link and not riwayat_already_read:
-                        riwayat_already_read = True
-                        log.info("Ditemukan link Riwayat Chat. Mengklik...")
-                        try:
-                            await history_link.click(timeout=3000)
-                        except Exception as e:
-                            log.warning("Gagal click normal (%s), mencoba force click via JS...", e)
-                            await history_link.evaluate("node => node.click()")
-                        
-                        await page.wait_for_timeout(1000)
-                        try:
-                            await page.wait_for_selector(
-                                'div[role="dialog"], [class*="modal"]', 
-                                state="visible", 
-                                timeout=5000
-                            )
-                        except Exception:
-                            log.warning("Popup Riwayat Chat tidak muncul dalam 5 detik")
-                        
-                        # Ekstrak pesan pembeli terakhir dari popup
-                        extracted_msg = await page.evaluate(r"""() => {
-                            """ + IS_SELLER_JS + r"""
-                            let modal = null;
-                            const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
-                            for (const d of dialogs) {
-                                if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
-                                    modal = d;
-                                    break;
-                                }
-                            }
-                            const container = modal || document.body;
-                            const bubbles = container.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble, [class*="message_text"], [class*="message-text"]');
-                            
-                            const buyerMessages = [];
-                            for (const el of bubbles) {
-                                const text = (el.textContent || '').trim();
-                                if (!text) continue;
-                                
-                                if (text.includes("Asisten AI Toko") || text.includes("Pesan kakak suda masuk") || text.includes("Hello dear! What would you like to ask?")) {
-                                    continue;
-                                }
-                                
-                                if (!isSeller(el, container)) {
-                                    buyerMessages.push(text);
-                                }
-                            }
-                            
-                            if (buyerMessages.length > 0) {
-                                return buyerMessages[buyerMessages.length - 1];
-                            }
-                            return "";
-                        }""")
-                        
-                        if extracted_msg:
-                            riwayat_buyer_message = extracted_msg.strip()
-                            log.info("Ekstrak riwayat chat pembeli berhasil: %s", riwayat_buyer_message[:100])
-                        
-                        # Tutup popup dengan cara yang sangat robust
-                        close_selectors = [
-                            "button[aria-label='Close']",
-                            "button[aria-label='Tutup']",
-                            ".shopee-react-modal__close",
-                            ".shopee-react-modal__close-btn",
-                            ".shopee-popup__close-btn",
-                            "[class*='modal'] button[class*='close']",
-                            "[class*='dialog'] button[class*='close']",
-                            "button:has-text('✕')",
-                            "button:has-text('×')",
-                            ".icon-close",
-                            "[class*='close']",
-                        ]
-                        close_btn = None
-                        for sel in close_selectors:
-                            try:
-                                loc = page.locator(f"[role='dialog'] {sel}").first
-                                if await loc.is_visible():
-                                    close_btn = loc
-                                    break
-                            except Exception:
-                                pass
-                        
-                        if not close_btn:
-                            for sel in close_selectors:
-                                try:
-                                    loc = page.locator(sel).first
-                                    if await loc.is_visible():
-                                        close_btn = loc
-                                        break
-                                except Exception:
-                                    pass
-                                    
-                        if close_btn:
-                            log.info("Menutup popup Riwayat Chat...")
-                            try:
-                                await close_btn.click(timeout=2000)
-                            except Exception:
-                                await close_btn.evaluate("node => node.click()")
-                        else:
-                            log.warning("Close button popup tidak ditemukan! Mencoba Escape...")
-                            await page.keyboard.press("Escape")
-                        
-                        await page.wait_for_timeout(1000)
-                        
-                        # Fallback ekstrim: hapus node dari DOM jika masih ada agar tidak memblokir chat selanjutnya
-                        await page.evaluate(r"""() => {
-                            const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
-                            dialogs.forEach(d => {
-                                if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
-                                    d.remove();
-                                }
-                            });
-                        }""")
-
-                        # Verifikasi popup sudah tertutup
-                        await page.wait_for_timeout(500)
-                        still_open = await page.evaluate(r"""() => {
-                            const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"]');
-                            for (const d of dialogs) {
-                                if (d.textContent && d.textContent.includes("Riwayat Chat")) return true;
-                            }
-                            return false;
-                        }""")
-                        if still_open:
-                            log.warning("Popup Riwayat Chat masih terbuka! Force close via Escape + DOM removal...")
-                            await page.keyboard.press("Escape")
-                            await page.wait_for_timeout(500)
-                            await page.evaluate(r"""() => {
-                                document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="overlay"], [class*="mask"]').forEach(d => d.remove());
-                            }""")
-                            await page.wait_for_timeout(500)
-                except Exception as e:
-                    log.warning("Gagal membaca Riwayat Chat: %s", e)
-
-
-                # Extract chat history from the middle panel using JS
-                chat_history = await page.evaluate(r"""() => {
-                    """ + IS_SELLER_JS + r"""
-                    const messageContainers = [...document.querySelectorAll('div')].filter(el => {
-                        const className = el.className || '';
-                        const style = window.getComputedStyle(el);
-                        return (style.overflowY === 'scroll' || style.overflowY === 'auto' || className.includes('message') || className.includes('chat-content') || className.includes('conversation'))
-                            && el.querySelectorAll('[class*="message"], [class*="bubble"]').length > 0;
-                    });
-                    
-                    let bestContainer = null;
-                    let maxBubbles = 0;
-                    for (const container of messageContainers) {
-                        const bubbles = container.querySelectorAll('[class*="message"], [class*="bubble"]');
-                        if (bubbles.length > maxBubbles) {
-                            maxBubbles = bubbles.length;
-                            bestContainer = container;
-                        }
-                    }
-                    
-                    if (!bestContainer) {
-                        bestContainer = document.body;
-                    }
-                    
-                    const bubbles = bestContainer.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble');
-                    
-                    const history = [];
-                    for (const b of bubbles) {
-                        if (b.closest && b.closest('[class*="history"], [class*="riwayat"]')) continue;
-                        const text = (b.textContent || '').trim();
-                        if (!text) continue;
-                        if (text.includes('Lihat Semua Riwayat Chat')) continue;
-                        
-                        history.push({
-                            text: text,
-                            isSeller: isSeller(b, bestContainer)
-                        });
-                    }
-                    
-                    const cleanHistory = [];
-                    for (const item of history) {
-                        if (cleanHistory.length > 0) {
-                            const last = cleanHistory[cleanHistory.length - 1];
-                            if (last.text.includes(item.text) && last.isSeller === item.isSeller) {
-                                continue;
-                            }
-                            if (item.text.includes(last.text) && last.isSeller === item.isSeller) {
-                                cleanHistory[cleanHistory.length - 1] = item;
-                                continue;
-                            }
-                        }
-                        cleanHistory.push(item);
-                    }
-                    
-                    return cleanHistory;
-                }""")
-
-                # Fallback to selector-based extraction if JS history returns empty
-                if not chat_history:
-                    log.warning("JS history extraction returned empty, trying fallback message selector...")
-                    message_selector = (
-                        "[data-cy^='webchat-message'], "
-                        ".message-bubble, "
-                        "[class*='message-bubble'], "
-                        "[class*='message-row'], "
-                        "[class*='message-item']"
-                    )
-                    messages = await page.query_selector_all(message_selector)
-                    container = await page.query_selector("[class*='chat-content'], [class*='conversation']")
-                    for msg in messages:
-                        try:
-                            msg_text = await msg.inner_text()
-                            is_seller = await page.evaluate(
-                                "([el, c]) => {" + IS_SELLER_JS + " return isSeller(el, c); }",
-                                [msg, container]
-                            )
-                            chat_history.append({
-                                "text": msg_text,
-                                "isSeller": bool(is_seller)
-                            })
-                        except Exception as e:
-                            log.warning("Gagal memproses pesan fallback: %s", e)
+                riwayat_buyer_message = await read_riwayat_chat(page)
+                chat_history = await extract_chat_history(page)
 
                 if not chat_history:
                     log.info("No message history found, saving DOM and screenshot.")
                     try:
                         await page.screenshot(path=os.path.join(LOG_DIR, "empty_history.png"))
-                        dom = await page.evaluate("document.body.innerHTML")
-                        with open(os.path.join(LOG_DIR, "dom_dump.html"), "w", encoding="utf-8") as f:
-                            f.write(dom)
-                    except Exception as e:
-                        log.error("Failed to dump DOM: %s", e)
+                    except Exception:
+                        pass
                     log.info("No message history found, skipping.")
                     continue
 
-                # Force isSeller validation (Bug 6)
                 for msg in chat_history:
-                    msg_lower = msg["text"].lower()
-                    if any(reply.lower() in msg_lower for reply in AUTO_REPLIES.values()):
+                    msg_lower = msg["text"].lower().strip()
+                    # Bug 3 Fixed: exact match check for isSeller
+                    if msg_lower in [r.lower().strip() for r in AUTO_REPLIES.values()]:
                         msg["isSeller"] = True
                     if DEFAULT_REPLY.lower()[:30] in msg_lower:
                         msg["isSeller"] = True
@@ -933,21 +909,17 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                         if len(ans) > 10 and ans.lower()[:30] in msg_lower:
                             msg["isSeller"] = True
 
-                # Limit chat history to the last 4 messages to save tokens/RAM
                 chat_history = chat_history[-4:]
-
                 last_msg = chat_history[-1]
                 last_msg_text = last_msg["text"]
                 last_msg_is_seller = last_msg["isSeller"]
                 
-                # Prevent looping on Shopee's chat limits/system error messages
                 if "gagal mengirim" in last_msg_text.lower() or "tunggu balasan pembeli" in last_msg_text.lower():
                     log.info("Chat blocked by Shopee (Gagal mengirim chat). Waiting for buyer to reply. Skipping.")
                     continue
 
                 is_assistant_ai = is_assistant_ai_msg(last_msg_text)
                 
-                # Check if the last message is an image
                 is_image = (
                     not last_msg_text.strip() or
                     "[gambar]" in last_msg_text.lower() or
@@ -963,12 +935,11 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                     if prev_msg["isSeller"] and is_assistant_ai_msg(prev_msg["text"]):
                         is_assistant_ai = True
 
-                # If the last message is from the seller AND it's not Assistant AI AND it's not an image, skip
                 if last_msg_is_seller and not is_assistant_ai and not is_image:
                     log.info("Seller already replied to the latest message. Skipping.")
+                    DAILY_SKIP_COUNT += 1
                     continue
 
-                # Extract the latest buyer message to generate the reply from
                 buyer_message = ""
                 found_buyer_msg = False
                 for msg in reversed(chat_history):
@@ -977,7 +948,6 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                         found_buyer_msg = True
                         break
                 
-                # Jika tidak ada pesan pembeli di chat utama, gunakan dari riwayat
                 if not found_buyer_msg and riwayat_buyer_message:
                     buyer_message = riwayat_buyer_message
                     found_buyer_msg = True
@@ -995,34 +965,24 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
 
                 has_real_buyer_message = bool(buyer_message.strip()) and not force_default_reply
 
-                # Append context if the last message is an image
                 if is_image:
                     if buyer_message and buyer_message != last_msg_text:
                         buyer_message = f'[Pesan terakhir berupa gambar. Pesan pembeli sebelumnya: "{buyer_message}"]'
                     else:
                         buyer_message = "[Pesan terakhir berupa gambar]"
 
-                # Bug 1: Double reply prevention
                 cache_key = f"{username}:{buyer_message[:50]}"
                 if cache_key in replied_cache:
                     log.debug("Already replied to '%s' with this message context, skipping.", username)
                     continue
-
-                # Filter out short non-question acknowledgments/messages to save tokens and prevent unnecessary replies
-                SKIP_MESSAGES = {
-                    "ok", "oke", "baik", "baik kak", "baik ka", "oke kak", "oke ka",
-                    "siap", "terima kasih", "makasih", "sami sami", "mks", "thx", "ty",
-                    "ok kak", "ok ka", "sip", "siap kak", "siap ka", "makasih kak", "makasih ka",
-                    "nuhun", "suwun"
-                }
                 
                 buyer_msg_lower = buyer_message.strip().lower().rstrip(".,!?~ ")
                 if buyer_msg_lower in SKIP_MESSAGES:
                     log.info("Skipping non-question acknowledgment for '%s': %s", username, buyer_message)
                     replied_cache[cache_key] = time.time()
+                    DAILY_SKIP_COUNT += 1
                     continue
 
-                # Check daily reply limit
                 if DAILY_REPLY_COUNTER >= MAX_DAILY_REPLIES:
                     log.warning("⚠️ Daily reply limit reached (%d). Skipping reply for '%s'.", MAX_DAILY_REPLIES, username)
                     replied_cache[cache_key] = time.time()
@@ -1038,164 +998,39 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
                     log.warning("👉 AI tidak tahu jawaban untuk: %s", buyer_message)
                     
                     if has_real_buyer_message:
-                        # Ada pertanyaan pembeli tapi AI tidak tahu → catat & skip
                         try:
                             clean_msg = re.sub(r'\d{1,2}:\d{2}$', '', buyer_message).strip()
-                            unanswered_path = UNANSWERED_PATH
-                            with open(unanswered_path, "a", encoding="utf-8") as f:
+                            with open(UNANSWERED_PATH, "a", encoding="utf-8") as f:
                                 f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {clean_msg}\nJ: \n")
-                            log.info("Dicatat ke %s", unanswered_path)
                         except Exception as e:
                             log.error("Gagal mencatat: %s", e)
                         
                         log.info("SKIP: Pertanyaan tidak ada di knowledge. Biarkan admin jawab.")
                         replied_cache[cache_key] = time.time()
+                        DAILY_UNANSWERED_COUNT += 1
                         continue
                     else:
-                        # Tidak ada pesan pembeli sama sekali → skip juga, jangan jawab apa-apa
                         log.info("SKIP: Tidak ada pesan pembeli. Tidak perlu menjawab.")
                         replied_cache[cache_key] = time.time()
+                        DAILY_SKIP_COUNT += 1
                         continue
 
-                # 7. Type and send reply
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
                 log.info("Reply text: %s", reply_text[:80])
 
-                # Find input box — prioritize contenteditable in chat area
-                input_box = None
-                input_sel_used = "none"
-
-                # Strategy 1: Specific contenteditable selectors in chat panel
-                ce_selectors = [
-                    "[data-cy='webchat-conversation-detail-input'] [contenteditable='true']",
-                    "[data-testid='chat-input'] [contenteditable='true']",
-                    ".chat-input [contenteditable='true']",
-                    "[class*='chat-input'] [contenteditable='true']",
-                    "[class*='composer'] [contenteditable='true']",
-                    "[class*='editor'] [contenteditable='true']",
-                ]
-                for sel in ce_selectors:
-                    input_box = await page.query_selector(sel)
-                    if input_box:
-                        input_sel_used = sel
-                        break
-
-                # Strategy 2: Fallback — find all contenteditable, pick bottommost
-                if not input_box:
-                    all_editable = await page.query_selector_all("[contenteditable='true']")
-                    if all_editable:
-                        best = None
-                        best_y = -1
-                        for el in all_editable:
-                            try:
-                                bbox = await el.bounding_box()
-                                if bbox and bbox['y'] > best_y:
-                                    best_y = bbox['y']
-                                    best = el
-                            except Exception:
-                                pass
-                        if best:
-                            input_box = best
-                            input_sel_used = f"position-fallback (y={best_y})"
-
-                # Strategy 3: Last resort — textarea
-                if not input_box:
-                    input_box = await page.query_selector("textarea")
-                    if input_box:
-                        input_sel_used = "textarea-fallback"
-
-                if not input_box:
-                    # Detect if chat is closed or handled by Shopee's AI Assistant
-                    try:
-                        page_content = await page.content()
-                        if "Chat telah diakhiri otomatis" in page_content or "Asisten AI Toko" in page_content:
-                            log.info("Chat with '%s' is closed or delegated to Shopee's AI Assistant. Skipping reply.", username)
-                            replied_cache[cache_key] = time.time()
-                            continue
-                    except Exception as ce_err:
-                        log.warning("Failed to check page content for closed chat: %s", ce_err)
-
-                    log.warning("Could not find chat input box — Shopee may have changed its DOM.")
-                    try:
-                        fail_path = os.path.join(LOG_DIR, f"no_input_{username}_{int(time.time())}.png")
-                        await page.screenshot(path=fail_path)
-                        log.warning("Saved no-input screenshot: %s", fail_path)
-                    except Exception:
-                        pass
-                    continue
-
-                log.info("Found input box via: %s", input_sel_used)
-
-                # Click and focus the input box
-                await input_box.click()
-                await page.wait_for_timeout(300)
-
-                # Detect element type to choose the right input method
-                tag_name = await input_box.evaluate("el => el.tagName.toLowerCase()")
-                log.info("Input box tag: %s, visible: %s", tag_name, await input_box.is_visible())
-
-                if tag_name in ("input", "textarea"):
-                    # Standard input — fill() works
-                    await input_box.fill(reply_text)
-                else:
-                    # contenteditable div — must use keyboard.type()
-                    await input_box.evaluate("el => { el.textContent = ''; el.focus(); }")
-                    await page.wait_for_timeout(200)
-                    await page.keyboard.type(reply_text, delay=30)
-
-                await page.wait_for_timeout(300)
-
-                # Send: try Enter key first
-                await page.keyboard.press("Enter")
-                await page.wait_for_timeout(1000)
-
-                # Verify if the message was sent (input box should be empty)
-                input_text_after = await input_box.evaluate(
-                    "el => (el.value || el.textContent || '').trim()"
-                )
-
-                if input_text_after:
-                    # Enter didn't work — try clicking the Send/Kirim button
-                    log.info("Enter didn't send message (input still has text), trying Send button...")
-                    try:
-                        send_button = page.locator(
-                            "button:has-text('Kirim'), "
-                            "button:has-text('Send'), "
-                            "[data-testid='send-button'], "
-                            "button.send-btn, "
-                            "button[class*='send'], "
-                            "[class*='send'] button, "
-                            "[class*='composer'] button"
-                        ).first
-                        if await send_button.is_visible(timeout=2000):
-                            await send_button.click()
-                            await page.wait_for_timeout(800)
-                            log.info("Sent via Send button click")
-                        else:
-                            log.warning("Send button not visible either")
-                    except Exception as send_err:
-                        log.warning("Send button click failed: %s", send_err)
-
-                    # Take a failure screenshot for debugging
-                    try:
-                        fail_path = os.path.join(LOG_DIR, f"send_fail_{username}_{int(time.time())}.png")
-                        await page.screenshot(path=fail_path)
-                        log.warning("Saved send-failure screenshot: %s", fail_path)
-                    except Exception:
-                        pass
-                else:
-                    log.info("=== REPLY RESULT: SUCCESS (sent via Enter) ===")
-
-                log.info("Replied to '%s': %s", username, reply_text[:80])
-                replied_cache[cache_key] = time.time()
-                DAILY_REPLY_COUNTER += 1
-                log.info("Daily reply count: %d/%d", DAILY_REPLY_COUNTER, MAX_DAILY_REPLIES)
-                processed += 1
+                if await send_reply(page, reply_text, username):
+                    replied_cache[cache_key] = time.time()
+                    DAILY_REPLY_COUNTER += 1
+                    DAILY_AI_REPLIED_COUNT += 1
+                    log.info("Daily reply count: %d/%d", DAILY_REPLY_COUNTER, MAX_DAILY_REPLIES)
+                    processed += 1
                 
-                # Delay sebelum pindah ke chat berikutnya agar DOM terupdate
                 await page.wait_for_timeout(2000)
 
             except Exception as exc:
+                exc_msg = str(exc).lower()
+                if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg:
+                    raise exc
                 log.error("Error processing chat item #%d: %s", index + 1, exc)
 
     except Exception as exc:
@@ -1205,7 +1040,6 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
             raise exc
 
     return processed
-
 
 
 async def run_bot():
@@ -1322,80 +1156,104 @@ async def run_bot():
                 browser_lifetime_limit = 21600
 
                 while not shutdown_event.is_set():
-                    # Check if we need to restart the entire browser (e.g., reached lifetime limit)
-                    if time.time() - browser_start_time > browser_lifetime_limit:
-                        log.info("Browser reached lifetime limit (%d seconds). Scheduling restart...", browser_lifetime_limit)
-                        break
-
-                    cycle_count += 1
-                    
-                    # Heartbeat logging every ~5 minutes
-                    if cycle_count % 60 == 0:
-                        log.info("💓 Bot heartbeat: %d cycles completed, replied_cache size: %d", 
-                                 cycle_count, len(replied_cache))
-
-                    # Hot reload store_knowledge.txt every ~10 minutes
-                    if cycle_count % 120 == 0:
-                        reload_knowledge()
-
-                    # Clean up expired replied_cache items (> 24 hours)
-                    now = time.time()
-                    expired = [k for k, v in replied_cache.items() if now - v > 86400]
-                    for k in expired:
-                        del replied_cache[k]
-
-                    # Auto-close extra tabs (e.g. captcha popups) and focus main tab
-                    if len(context.pages) > 1:
-                        log.info("Detected %d open tabs. Closing extra tabs...", len(context.pages))
-                        for i in range(len(context.pages) - 1, 0, -1):
-                            try:
-                                await context.pages[i].close()
-                            except Exception as e:
-                                log.warning("Failed to close extra tab: %s", e)
-                        page = context.pages[0]
-                        await page.bring_to_front()
-                        await page.wait_for_timeout(1000)
-
-                    # Check if main tab is stuck on captcha/error
-                    if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
-                        log.warning("Main tab is on captcha/error page (%s). Navigating back to chat...", page.url)
-                        await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                        await page.wait_for_timeout(3000)
-
-                    # Dynamic routing check (detect if redirected to login page)
-                    if "login" in page.url or "auth" in page.url:
-                        log.warning("Detected logout/redirect to login page. Retrying navigation...")
-                        await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                        await page.wait_for_timeout(3000)
-                        if "login" in page.url or "auth" in page.url:
-                            log.error("Still not logged in. Waiting for user login...")
-                            try:
-                                await asyncio.wait_for(shutdown_event.wait(), timeout=60)
-                            except asyncio.TimeoutError:
-                                pass
-                            continue
-
-                    # Scheduled page reload every 30 minutes to prevent memory leak / Aw Snap (Error 9)
-                    if time.time() - last_refresh_time > 1800:
-                        log.info("Performing scheduled page reload to prevent memory leak...")
-                        try:
-                            await page.reload(wait_until="domcontentloaded")
-                            await page.wait_for_timeout(3000)
-                            last_refresh_time = time.time()
-                        except Exception as reload_err:
-                            log.error("Scheduled reload failed: %s", reload_err)
-
-                    # Scan and reply to unread chats directly on the live page
-                    count = await handle_unread_chats(page, replied_cache)
-                    if count:
-                        log.info("Processed %d chat(s) this cycle", count)
-                    else:
-                        log.debug("No unread chats")
-
                     try:
-                        await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_INTERVAL_SECONDS)
-                    except asyncio.TimeoutError:
-                        pass
+                        # Check if we need to restart the entire browser (e.g., reached lifetime limit)
+                        if time.time() - browser_start_time > browser_lifetime_limit:
+                            log.info("Browser reached lifetime limit (%d seconds). Scheduling restart...", browser_lifetime_limit)
+                            break
+    
+                        cycle_count += 1
+                        
+                        # Heartbeat logging every ~5 minutes
+                        if cycle_count % 60 == 0:
+                            log.info("💓 Bot heartbeat: %d cycles completed, replied_cache size: %d", 
+                                     cycle_count, len(replied_cache))
+    
+                        # Hot reload store_knowledge.txt every ~10 minutes
+                        if cycle_count % 120 == 0:
+                            reload_knowledge()
+                            cleanup_old_screenshots(LOG_DIR, 24)
+    
+                        # Clean up expired replied_cache items (> 24 hours)
+                        now = time.time()
+                        expired = [k for k, v in replied_cache.items() if now - v > 86400]
+                        for k in expired:
+                            del replied_cache[k]
+    
+                        # Auto-close extra tabs (e.g. captcha popups) and focus main tab
+                        if len(context.pages) > 1:
+                            log.info("Detected %d open tabs. Closing extra tabs...", len(context.pages))
+                            for i in range(len(context.pages) - 1, 0, -1):
+                                try:
+                                    await context.pages[i].close()
+                                except Exception as e:
+                                    log.warning("Failed to close extra tab: %s", e)
+                            page = context.pages[0]
+                            await page.bring_to_front()
+                            await page.wait_for_timeout(1000)
+    
+                        # Check if main tab is stuck on captcha/error
+                        if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
+                            log.warning("Main tab is on captcha/error page (%s). Navigating back to chat...", page.url)
+                            await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                            await page.wait_for_timeout(3000)
+    
+                        # Dynamic routing check (detect if redirected to login page)
+                        if "login" in page.url or "auth" in page.url:
+                            log.warning("Detected logout/redirect to login page. Retrying navigation...")
+                            await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                            await page.wait_for_timeout(3000)
+                            if "login" in page.url or "auth" in page.url:
+                                log.error("Still not logged in. Waiting for user login...")
+                                try:
+                                    await asyncio.wait_for(shutdown_event.wait(), timeout=60)
+                                except asyncio.TimeoutError:
+                                    pass
+                                continue
+    
+                        # Scheduled page reload every 30 minutes to prevent memory leak / Aw Snap (Error 9)
+                        if time.time() - last_refresh_time > 1800:
+                            log.info("Performing scheduled page reload to prevent memory leak...")
+                            try:
+                                await page.goto("about:blank", wait_until="domcontentloaded")
+                                await page.wait_for_timeout(1000)
+                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                                await page.wait_for_timeout(3000)
+                                last_refresh_time = time.time()
+                            except Exception as reload_err:
+                                log.error("Scheduled reload failed: %s", reload_err)
+    
+                        # Scan and reply to unread chats directly on the live page
+                        count = await handle_unread_chats(page, replied_cache)
+                        if count:
+                            log.info("Processed %d chat(s) this cycle", count)
+                        else:
+                            log.debug("No unread chats")
+    
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_INTERVAL_SECONDS)
+                        except asyncio.TimeoutError:
+                            pass
+                    except Exception as loop_exc:
+                        log.error("Unexpected error in inner poll loop: %s", loop_exc)
+                        exc_msg = str(loop_exc).lower()
+                        if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or page.is_closed():
+                            log.warning("Critical browser crash/closure detected in inner loop. Re-raising...")
+                            raise loop_exc
+                        
+                        try:
+                            log.info("Attempting page reload to recover from inner loop error...")
+                            await page.goto("about:blank", wait_until="domcontentloaded")
+                            await page.wait_for_timeout(1000)
+                            await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                            await page.wait_for_timeout(3000)
+                        except Exception as reload_exc:
+                            log.error("Failed to recover page in inner loop: %s", reload_exc)
+                            
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=15)
+                        except asyncio.TimeoutError:
+                            pass
 
                 log.info("Closing persistent Chromium context...")
                 await context.close()
