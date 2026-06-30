@@ -1200,6 +1200,9 @@ async def handle_unread_chats(page, replied_cache: dict) -> int:
 
     except Exception as exc:
         log.error("Error fetching chat list: %s", exc)
+        exc_msg = str(exc).lower()
+        if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg:
+            raise exc
 
     return processed
 
@@ -1243,123 +1246,180 @@ async def run_bot():
                 loop.call_soon_threadsafe(shutdown_event.set)
             signal.signal(getattr(signal, signame), win_handler)
 
+    replied_cache = {}
+
     async with async_playwright() as p:
-        log.info("Launching persistent Chromium context…")
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=PROFILE_DIR,
-            headless=os.getenv("HEADLESS", "true").lower() == "true",
-            ignore_default_args=["--enable-automation"],
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-            ],
-            viewport={"width": 1280, "height": 900},
-        )
+        while not shutdown_event.is_set():
+            log.info("Launching persistent Chromium context…")
+            try:
+                # Clean up stale Chromium lock file again in case browser crashed
+                if os.path.islink(lock_file) or os.path.exists(lock_file):
+                    try:
+                        os.unlink(lock_file)
+                    except Exception:
+                        pass
+                
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=PROFILE_DIR,
+                    headless=os.getenv("HEADLESS", "true").lower() == "true",
+                    ignore_default_args=["--enable-automation"],
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-gpu",
+                        "--disable-software-rasterizer",
+                        "--js-flags=--max-old-space-size=4096",
+                    ],
+                    viewport={"width": 1280, "height": 900},
+                )
 
-        # Anti-bot stealth: override navigator.webdriver
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        """)
+                # Anti-bot stealth: override navigator.webdriver
+                await context.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                """)
 
-        page = context.pages[0] if context.pages else await context.new_page()
+                page = context.pages[0] if context.pages else await context.new_page()
 
-        replied_cache = {}
-        cycle_count = 0
+                cycle_count = 0
+                last_refresh_time = time.time()
+                browser_start_time = time.time()
 
-        log.info("Navigating to Shopee Seller Chat…")
-        await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-        await page.wait_for_timeout(3000)
+                log.info("Navigating to Shopee Seller Chat…")
+                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                await page.wait_for_timeout(3000)
 
-        # Check if already logged in
-        if "login" in page.url or "auth" in page.url:
-            log.warning(
-                "Not logged in! Please log in manually via VNC/headful mode. "
-                "The bot will automatically resume once login is detected. "
-                "Profile will be saved at: %s",
-                PROFILE_DIR,
-            )
-            # Poll page URL to detect when user logs in
-            login_detected = False
-            for _ in range(120): # 120 * 5s = 600s = 10 minutes
-                if shutdown_event.is_set():
-                    break
-                await page.wait_for_timeout(5000)
-                # Check if we are logged in now
-                if "login" not in page.url and "auth" not in page.url:
-                    log.info("Login detected! Starting polling loop...")
-                    login_detected = True
-                    await page.wait_for_timeout(3000)
-                    break
-            
-            if not login_detected:
+                # Check if already logged in
+                if "login" in page.url or "auth" in page.url:
+                    log.warning(
+                        "Not logged in! Please log in manually via VNC/headful mode. "
+                        "The bot will automatically resume once login is detected. "
+                        "Profile will be saved at: %s",
+                        PROFILE_DIR,
+                    )
+                    # Poll page URL to detect when user logs in
+                    login_detected = False
+                    for _ in range(120): # 120 * 5s = 600s = 10 minutes
+                        if shutdown_event.is_set():
+                            break
+                        await page.wait_for_timeout(5000)
+                        # Check if we are logged in now
+                        if "login" not in page.url and "auth" not in page.url:
+                            log.info("Login detected! Starting polling loop...")
+                            login_detected = True
+                            await page.wait_for_timeout(3000)
+                            break
+                    
+                    if not login_detected:
+                        log.info("Closing persistent Chromium context...")
+                        await context.close()
+                        break
+
+                log.info("Logged in — entering polling loop (every %ds)", POLL_INTERVAL_SECONDS)
+
+                # Define browser lifetime (e.g. 6 hours = 21600 seconds)
+                browser_lifetime_limit = 21600
+
+                while not shutdown_event.is_set():
+                    # Check if we need to restart the entire browser (e.g., reached lifetime limit)
+                    if time.time() - browser_start_time > browser_lifetime_limit:
+                        log.info("Browser reached lifetime limit (%d seconds). Scheduling restart...", browser_lifetime_limit)
+                        break
+
+                    cycle_count += 1
+                    
+                    # Heartbeat logging every ~5 minutes
+                    if cycle_count % 60 == 0:
+                        log.info("💓 Bot heartbeat: %d cycles completed, replied_cache size: %d", 
+                                 cycle_count, len(replied_cache))
+
+                    # Hot reload store_knowledge.txt every ~10 minutes
+                    if cycle_count % 120 == 0:
+                        reload_knowledge()
+
+                    # Clean up expired replied_cache items (> 24 hours)
+                    now = time.time()
+                    expired = [k for k, v in replied_cache.items() if now - v > 86400]
+                    for k in expired:
+                        del replied_cache[k]
+
+                    # Auto-close extra tabs (e.g. captcha popups) and focus main tab
+                    if len(context.pages) > 1:
+                        log.info("Detected %d open tabs. Closing extra tabs...", len(context.pages))
+                        for i in range(len(context.pages) - 1, 0, -1):
+                            try:
+                                await context.pages[i].close()
+                            except Exception as e:
+                                log.warning("Failed to close extra tab: %s", e)
+                        page = context.pages[0]
+                        await page.bring_to_front()
+                        await page.wait_for_timeout(1000)
+
+                    # Check if main tab is stuck on captcha/error
+                    if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
+                        log.warning("Main tab is on captcha/error page (%s). Navigating back to chat...", page.url)
+                        await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                        await page.wait_for_timeout(3000)
+
+                    # Dynamic routing check (detect if redirected to login page)
+                    if "login" in page.url or "auth" in page.url:
+                        log.warning("Detected logout/redirect to login page. Retrying navigation...")
+                        await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                        await page.wait_for_timeout(3000)
+                        if "login" in page.url or "auth" in page.url:
+                            log.error("Still not logged in. Waiting for user login...")
+                            try:
+                                await asyncio.wait_for(shutdown_event.wait(), timeout=60)
+                            except asyncio.TimeoutError:
+                                pass
+                            continue
+
+                    # Scheduled page reload every 30 minutes to prevent memory leak / Aw Snap (Error 9)
+                    if time.time() - last_refresh_time > 1800:
+                        log.info("Performing scheduled page reload to prevent memory leak...")
+                        try:
+                            await page.reload(wait_until="domcontentloaded")
+                            await page.wait_for_timeout(3000)
+                            last_refresh_time = time.time()
+                        except Exception as reload_err:
+                            log.error("Scheduled reload failed: %s", reload_err)
+
+                    # Scan and reply to unread chats directly on the live page
+                    count = await handle_unread_chats(page, replied_cache)
+                    if count:
+                        log.info("Processed %d chat(s) this cycle", count)
+                    else:
+                        log.debug("No unread chats")
+
+                    try:
+                        await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_INTERVAL_SECONDS)
+                    except asyncio.TimeoutError:
+                        pass
+
                 log.info("Closing persistent Chromium context...")
                 await context.close()
-                return
-
-        log.info("Logged in — entering polling loop (every %ds)", POLL_INTERVAL_SECONDS)
-
-        while not shutdown_event.is_set():
-            try:
-                cycle_count += 1
-                
-                # Heartbeat logging every ~5 minutes
-                if cycle_count % 60 == 0:
-                    log.info("💓 Bot heartbeat: %d cycles completed, replied_cache size: %d", 
-                             cycle_count, len(replied_cache))
-
-                # Hot reload store_knowledge.txt every ~10 minutes
-                if cycle_count % 120 == 0:
-                    reload_knowledge()
-
-                # Clean up expired replied_cache items (> 24 hours)
-                now = time.time()
-                expired = [k for k, v in replied_cache.items() if now - v > 86400]
-                for k in expired:
-                    del replied_cache[k]
-
-                # Auto-close extra tabs (e.g. captcha popups) and focus main tab
-                if len(context.pages) > 1:
-                    log.info("Detected %d open tabs. Closing extra tabs...", len(context.pages))
-                    for i in range(len(context.pages) - 1, 0, -1):
-                        try:
-                            await context.pages[i].close()
-                        except Exception as e:
-                            log.warning("Failed to close extra tab: %s", e)
-                    page = context.pages[0]
-                    await page.bring_to_front()
-                    await page.wait_for_timeout(1000)
-
-                # Check if main tab is stuck on captcha/error
-                if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
-                    log.warning("Main tab is on captcha/error page (%s). Navigating back to chat...", page.url)
-                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(3000)
-
-                # Dynamic routing check (detect if redirected to login page)
-                if "login" in page.url or "auth" in page.url:
-                    log.warning("Detected logout/redirect to login page. Retrying navigation...")
-                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(3000)
-                    if "login" in page.url or "auth" in page.url:
-                        log.error("Still not logged in. Waiting for user login...")
-                        try:
-                            await asyncio.wait_for(shutdown_event.wait(), timeout=60)
-                        except asyncio.TimeoutError:
-                            pass
-                        continue
-
-                # Scan and reply to unread chats directly on the live page
-                count = await handle_unread_chats(page, replied_cache)
-                if count:
-                    log.info("Processed %d chat(s) this cycle", count)
-                else:
-                    log.debug("No unread chats")
 
             except Exception as exc:
                 log.error("Unexpected error in poll loop: %s", exc, exc_info=True)
-                # Try reloading the page on error to recover state
+                exc_msg = str(exc).lower()
+                # If it's a critical browser/context closure, we raise to let the context recreate
+                if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or page.is_closed():
+                    log.warning("Critical browser crash/closure detected, recreating context...")
+                    # Ensure context is closed if possible
+                    try:
+                        if 'context' in locals():
+                            await context.close()
+                    except Exception:
+                        pass
+                    # Jeda sebelum me-restart browser
+                    try:
+                        await asyncio.wait_for(shutdown_event.wait(), timeout=10)
+                    except asyncio.TimeoutError:
+                        pass
+                    continue
+                
+                # Try reloading the page on other non-fatal errors to recover state
                 try:
                     log.info("Attempting page reload to recover...")
                     await page.reload(wait_until="domcontentloaded")
@@ -1370,15 +1430,7 @@ async def run_bot():
                     await asyncio.wait_for(shutdown_event.wait(), timeout=15)
                 except asyncio.TimeoutError:
                     pass
-                continue
 
-            try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_INTERVAL_SECONDS)
-            except asyncio.TimeoutError:
-                pass
-
-        log.info("Gracefully closing Playwright context and browser...")
-        await context.close()
         log.info("Graceful shutdown complete.")
 
 
