@@ -116,7 +116,7 @@ jobs:
   deploy-preview:
     needs: build
     if: github.event_name == 'pull_request' && github.event.action != 'closed'
-    runs-on: self-hosted
+    runs-on: [self-hosted, test]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -176,7 +176,7 @@ jobs:
   # ============================================
   cleanup-preview:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: self-hosted
+    runs-on: [self-hosted, test]
     steps:
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -196,7 +196,7 @@ jobs:
   deploy:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: self-hosted
+    runs-on: [self-hosted, 226node2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
