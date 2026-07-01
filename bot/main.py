@@ -954,8 +954,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                         "you:" in preview_lower or
                         any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
                         DEFAULT_REPLY.lower()[:15] in preview_lower or
-                        "gambar" in preview_lower or
-                        "image" in preview_lower or
                         "gagal mengirim" in preview_lower or
                         "tunggu balasan" in preview_lower
                     ):
