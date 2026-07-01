@@ -1014,7 +1014,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     log.info("Buyer message context: %s", buyer_message[:100])
                     reply_text = await get_ai_reply(buyer_message)
                 
-                if "TIDAK TAHU" in reply_text or (reply_text == DEFAULT_REPLY and not force_default_reply):
+                if "tidak tahu" in reply_text.lower() or (reply_text == DEFAULT_REPLY and not force_default_reply):
                     log.warning("👉 AI tidak tahu jawaban untuk: %s", buyer_message)
                     
                     if has_real_buyer_message:
