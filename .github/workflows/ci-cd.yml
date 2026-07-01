@@ -131,6 +131,8 @@ jobs:
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AI_PROVIDER: "gemini"
         run: |
           import os
           import subprocess
@@ -160,7 +162,8 @@ jobs:
               "-e", "HEADLESS=false",
               "-e", "POLL_INTERVAL=10",
               "-e", "VNC_PASSWORD=previewpass",
-              "-e", "OLLAMA_URL=http://ollama:11434",
+              "-e", "AI_PROVIDER=" + os.environ.get("AI_PROVIDER", "gemini"),
+              "-e", "GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", ""),
               "-v", "shopee-bot-profile-preview:/data/shopee-profile",
               "-v", "shopee-bot-logs-preview:/data/logs",
               "-v", f"{wk}/unanswered_questions.txt:/app/unanswered_questions.txt",
@@ -211,6 +214,8 @@ jobs:
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AI_PROVIDER: "gemini"
         run: |
           import os
           import subprocess
@@ -222,6 +227,8 @@ jobs:
           env_vars = os.environ.copy()
           env_vars["DOCKER_USERNAME"] = docker_user
           env_vars["IMAGE_TAG"] = os.environ.get("IMAGE_TAG")
+          env_vars["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
+          env_vars["AI_PROVIDER"] = os.environ.get("AI_PROVIDER", "gemini")
           
           if docker_user == "local":
               print("Building and deploying locally because no Docker Hub registry is used...")
