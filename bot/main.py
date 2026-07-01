@@ -1036,7 +1036,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
     except Exception as exc:
         log.error("Error fetching chat list: %s", exc)
         exc_msg = str(exc).lower()
-        if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg:
+        if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or "not attached" in exc_msg:
             raise exc
 
     return processed
@@ -1237,7 +1237,7 @@ async def run_bot():
                     except Exception as loop_exc:
                         log.error("Unexpected error in inner poll loop: %s", loop_exc)
                         exc_msg = str(loop_exc).lower()
-                        if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or page.is_closed():
+                        if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or "not attached" in exc_msg or page.is_closed():
                             log.warning("Critical browser crash/closure detected in inner loop. Re-raising...")
                             raise loop_exc
                         
@@ -1262,7 +1262,7 @@ async def run_bot():
                 log.error("Unexpected error in poll loop: %s", exc, exc_info=True)
                 exc_msg = str(exc).lower()
                 # If it's a critical browser/context closure, we raise to let the context recreate
-                if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or page.is_closed():
+                if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or "not attached" in exc_msg or page.is_closed():
                     log.warning("Critical browser crash/closure detected, recreating context...")
                     # Ensure context is closed if possible
                     try:
@@ -1293,4 +1293,9 @@ async def run_bot():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_bot())
+    try:
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        log.info("Bot dihentikan oleh user (KeyboardInterrupt).")
+    except Exception as e:
+        log.error("Bot berhenti karena error fatal: %s", e)
