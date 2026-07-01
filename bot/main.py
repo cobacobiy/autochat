@@ -54,8 +54,17 @@ log = logging.getLogger(__name__)
 PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
 SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
+
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
+
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2")
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
 
 # ── Safety / Limit Configuration ──────────────────────────────────────────────
 UNANSWERED_PATH = os.getenv("UNANSWERED_PATH", "/app/unanswered_questions.txt")
@@ -234,53 +243,101 @@ def build_system_prompt() -> str:
     )
 
 async def get_ai_reply(buyer_message: str) -> str:
-    """Generate reply using Ollama (Gemini fallback removed)."""
-    log.info("Menggunakan Ollama lokal untuk membalas...")
     system_prompt = build_system_prompt()
     
     for attempt in range(2):
         try:
             async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
-                    "model": OLLAMA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": buyer_message}
-                    ],
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.0,
-                        "top_p": 0.1
+                if AI_PROVIDER == "gemini":
+                    if not GEMINI_API_KEY:
+                        log.error("GEMINI_API_KEY is not set!")
+                        return "TIDAK TAHU"
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+                    payload = {
+                        "system_instruction": {"parts": {"text": system_prompt}},
+                        "contents": {"parts": {"text": buyer_message}},
+                        "generationConfig": {"temperature": 0.0, "topP": 0.1}
                     }
-                })
-                if resp.status_code == 200:
-                    reply = resp.json().get("message", {}).get("content", "").strip()
-                    if reply:
-                        reply_lower = reply.lower()
-                        if reply_lower.startswith("j:"):
-                            reply = reply[2:].strip()
-                        elif reply_lower.startswith("j :"):
-                            reply = reply[3:].strip()
-                        elif reply_lower.startswith("anda:"):
-                            reply = reply[5:].strip()
-                        elif reply_lower.startswith("anda :"):
-                            reply = reply[6:].strip()
-                        elif reply_lower.startswith("jawaban:"):
-                            reply = reply[8:].strip()
-                            
-                        if "t:" in reply_lower:
-                            log.warning("Ollama hallucinated Q&A format. Forcing TIDAK TAHU.")
-                            return "TIDAK TAHU"
-                        return reply
-                log.warning("Ollama attempt %d returned status code: %s, message: %s", attempt + 1, resp.status_code, resp.text)
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        try:
+                            reply = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                            return _clean_ai_reply(reply)
+                        except (KeyError, IndexError) as e:
+                            log.warning("Unexpected Gemini response format: %s", e)
+                    else:
+                        log.warning("Gemini attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
+                        
+                elif AI_PROVIDER == "claude":
+                    if not ANTHROPIC_API_KEY:
+                        log.error("ANTHROPIC_API_KEY is not set!")
+                        return "TIDAK TAHU"
+                    url = "https://api.anthropic.com/v1/messages"
+                    headers = {
+                        "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    }
+                    payload = {
+                        "model": ANTHROPIC_MODEL,
+                        "system": system_prompt,
+                        "messages": [{"role": "user", "content": buyer_message}],
+                        "max_tokens": 512,
+                        "temperature": 0.0
+                    }
+                    resp = await client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        try:
+                            reply = resp.json()["content"][0]["text"].strip()
+                            return _clean_ai_reply(reply)
+                        except (KeyError, IndexError) as e:
+                            log.warning("Unexpected Claude response format: %s", e)
+                    else:
+                        log.warning("Claude attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
+                        
+                else:
+                    # Default fallback to Ollama
+                    resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
+                        "model": OLLAMA_MODEL,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": buyer_message}
+                        ],
+                        "stream": False,
+                        "options": {"temperature": 0.0, "top_p": 0.1}
+                    })
+                    if resp.status_code == 200:
+                        reply = resp.json().get("message", {}).get("content", "").strip()
+                        if reply:
+                            return _clean_ai_reply(reply)
+                    else:
+                        log.warning("Ollama attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
+                        
         except Exception as e:
-            log.warning("Ollama attempt %d error: %s", attempt + 1, e)
+            log.warning("%s attempt %d error: %s", AI_PROVIDER.capitalize(), attempt + 1, e)
         
         if attempt < 1:
             await asyncio.sleep(2)
             
-    log.warning("Ollama gagal, menggunakan keyword auto-reply sebagai fallback")
-    return get_auto_reply(buyer_message)
+    return "TIDAK TAHU"
+
+def _clean_ai_reply(reply: str) -> str:
+    reply_lower = reply.lower()
+    if reply_lower.startswith("j:"):
+        reply = reply[2:].strip()
+    elif reply_lower.startswith("j :"):
+        reply = reply[3:].strip()
+    elif reply_lower.startswith("anda:"):
+        reply = reply[5:].strip()
+    elif reply_lower.startswith("anda :"):
+        reply = reply[6:].strip()
+    elif reply_lower.startswith("jawaban:"):
+        reply = reply[8:].strip()
+        
+    if "t:" in reply.lower() and "\nj:" in reply.lower():
+        log.warning("AI hallucinated Q&A format. Forcing TIDAK TAHU.")
+        return "TIDAK TAHU"
+    return reply
 
 
 def is_assistant_ai_msg(text: str) -> bool:
