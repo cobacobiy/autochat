@@ -775,7 +775,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
             try:
                 index = -1
                 username = "Unknown"
-                riwayat_already_read = False
                 
                 try:
                     elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
