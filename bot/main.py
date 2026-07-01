@@ -446,14 +446,32 @@ async def setup_chat_view(page) -> bool:
                 log.info("No chat items detected. Clicking 'Semua Pembeli' section to expand...")
                 await semua_pembeli.click()
                 await page.wait_for_timeout(2000)
-            else:
-                belum_dibalas = page.locator("text=Belum Dibalas").first
-                if await belum_dibalas.is_visible():
-                    log.info("No chat items detected. Clicking 'Belum Dibalas' section to expand...")
-                    await belum_dibalas.click()
-                    await page.wait_for_timeout(2000)
+                
     except Exception as e:
         log.warning("Expanding sections failed: %s", e)
+        
+    try:
+        # Coba klik tombol Filter untuk mempercepat pencarian chat unread (mencegah chat tertumpuk di virtual scroll)
+        filter_btn = page.locator("button:has-text('Filter')").first
+        if await filter_btn.is_visible():
+            log.info("Mengklik tombol Filter...")
+            await filter_btn.click()
+            await page.wait_for_timeout(1000)
+            
+            # Cari opsi "Belum dibaca" atau "Belum dibalas"
+            belum_dibaca = page.locator("text=Belum dibaca, text=Belum Dibaca, text=Unread").first
+            if await belum_dibaca.is_visible():
+                log.info("Mengaktifkan filter 'Belum dibaca'...")
+                await belum_dibaca.click()
+                await page.wait_for_timeout(1500)
+            else:
+                belum_dibalas = page.locator("text=Belum dibalas, text=Belum Dibalas").first
+                if await belum_dibalas.is_visible():
+                    log.info("Mengaktifkan filter 'Belum dibalas'...")
+                    await belum_dibalas.click()
+                    await page.wait_for_timeout(1500)
+    except Exception as e:
+        log.warning("Gagal mengaktifkan filter unread: %s", e)
     return True
 
 async def read_riwayat_chat(page) -> str:
