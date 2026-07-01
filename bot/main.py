@@ -555,9 +555,132 @@ async def read_riwayat_chat(page) -> str:
         
         riwayat_buyer_message = ""
         if history_link:
-            log.info("Ditemukan link Riwayat Chat. Dinonaktifkan untuk menghindari page refresh/loop.")
-            return ""
+            log.info("Ditemukan link Riwayat Chat. Membuka popup secara aman...")
             
+            # Hapus href dari tag <a> agar browser tidak melakukan refresh/navigasi saat diklik, lalu klik.
+            try:
+                await history_link.evaluate("""node => {
+                    if (node.tagName === 'A') {
+                        node.removeAttribute('href');
+                        node.removeAttribute('target');
+                    }
+                    node.click();
+                }""")
+            except Exception as e:
+                log.warning("Gagal mengklik link riwayat: %s", e)
+                return ""
+            
+            await page.wait_for_timeout(1000)
+            try:
+                await page.wait_for_selector(
+                    'div[role="dialog"], [class*="modal"]', 
+                    state="visible", 
+                    timeout=5000
+                )
+            except Exception:
+                log.warning("Popup Riwayat Chat tidak muncul dalam 5 detik")
+            
+            extracted_msg = await page.evaluate(r'''() => {
+                ''' + IS_SELLER_JS + r'''
+                let modal = null;
+                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
+                for (const d of dialogs) {
+                    if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                        modal = d;
+                        break;
+                    }
+                }
+                const container = modal || document.body;
+                const bubbles = container.querySelectorAll('[data-cy="webchat-message-receive"], [data-cy="webchat-message-send"], [class*="message-bubble"], [class*="message_bubble"], [class*="message-item"], [class*="message-row"], [class*="msg-item"], .message, .bubble, [class*="message_text"], [class*="message-text"]');
+                
+                const buyerMessages = [];
+                for (const el of bubbles) {
+                    const text = (el.textContent || '').trim();
+                    if (!text) continue;
+                    
+                    if (text.includes("Asisten AI Toko") || text.includes("Pesan kakak suda masuk") || text.includes("Hello dear! What would you like to ask?")) {
+                        continue;
+                    }
+                    
+                    if (!isSeller(el, container)) {
+                        buyerMessages.push(text);
+                    }
+                }
+                if (buyerMessages.length > 0) {
+                    return buyerMessages[buyerMessages.length - 1];
+                }
+                return "";
+            }''')
+            
+            if extracted_msg:
+                riwayat_buyer_message = extracted_msg.strip()
+                log.info("Ekstrak riwayat chat pembeli berhasil: %s", riwayat_buyer_message[:100])
+            
+            # Coba tutup popup dengan klik tombol close (x)
+            close_selectors = [
+                "button[aria-label='Close']", "button[aria-label='Tutup']",
+                ".shopee-react-modal__close", ".shopee-react-modal__close-btn",
+                ".shopee-popup__close-btn", "[class*='modal'] button[class*='close']",
+                "[class*='dialog'] button[class*='close']", "button:has-text('✕')",
+                "button:has-text('×')", ".icon-close", "[class*='close']",
+            ]
+            close_btn = None
+            for sel in close_selectors:
+                try:
+                    loc = page.locator(f"[role='dialog'] {sel}").first
+                    if await loc.is_visible():
+                        close_btn = loc
+                        break
+                except Exception:
+                    pass
+            
+            if not close_btn:
+                for sel in close_selectors:
+                    try:
+                        loc = page.locator(sel).first
+                        if await loc.is_visible():
+                            close_btn = loc
+                            break
+                    except Exception:
+                        pass
+                        
+            if close_btn:
+                log.info("Menutup popup Riwayat Chat...")
+                try:
+                    await close_btn.click(timeout=2000)
+                except Exception:
+                    await close_btn.evaluate("node => node.click()")
+            else:
+                log.warning("Close button popup tidak ditemukan! Mencoba Escape...")
+                await page.keyboard.press("Escape")
+            
+            await page.wait_for_timeout(1000)
+            await page.evaluate(r'''() => {
+                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
+                dialogs.forEach(d => {
+                    if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                        d.remove();
+                    }
+                });
+            }''')
+
+            await page.wait_for_timeout(500)
+            still_open = await page.evaluate(r'''() => {
+                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"]');
+                for (const d of dialogs) {
+                    if (d.textContent && d.textContent.includes("Riwayat Chat")) return true;
+                }
+                return false;
+            }''')
+            if still_open:
+                log.warning("Popup Riwayat Chat masih terbuka! Force close via Escape + DOM removal...")
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(500)
+                await page.evaluate(r'''() => {
+                    document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="overlay"], [class*="mask"]').forEach(d => d.remove());
+                }''')
+                await page.wait_for_timeout(500)
+                
         return riwayat_buyer_message
     except Exception as e:
         log.warning("Gagal membaca Riwayat Chat: %s", e)
