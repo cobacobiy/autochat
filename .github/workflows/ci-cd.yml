@@ -162,7 +162,7 @@ jobs:
               "-e", "HEADLESS=false",
               "-e", "POLL_INTERVAL=10",
               "-e", "VNC_PASSWORD=previewpass",
-              "-e", "AI_PROVIDER=" + os.environ.get("AI_PROVIDER", "gemini"),
+              "-e", "AI_PROVIDER=" + os.environ.get("AI_PROVIDER", "ollama"),
               "-e", "GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", ""),
               "-v", "shopee-bot-profile-preview:/data/shopee-profile",
               "-v", "shopee-bot-logs-preview:/data/logs",
@@ -215,7 +215,7 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AI_PROVIDER: "gemini"
+          AI_PROVIDER: "ollama"
         run: |
           import os
           import subprocess
@@ -228,7 +228,7 @@ jobs:
           env_vars["DOCKER_USERNAME"] = docker_user
           env_vars["IMAGE_TAG"] = os.environ.get("IMAGE_TAG")
           env_vars["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
-          env_vars["AI_PROVIDER"] = os.environ.get("AI_PROVIDER", "gemini")
+          env_vars["AI_PROVIDER"] = os.environ.get("AI_PROVIDER", "ollama")
           
           if docker_user == "local":
               print("Building and deploying locally because no Docker Hub registry is used...")
