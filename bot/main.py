@@ -1332,8 +1332,9 @@ async def run_bot():
     
                         # Cek apakah halaman crash / blank putih (Aw Snap / Out of Memory)
                         try:
-                            body_text = await page.evaluate("document.body ? document.body.innerText.trim() : ''")
-                            is_blank = len(body_text) < 10  # Halaman tidak merender apa-apa
+                            # Menggunakan textContent agar overlay loading Shopee tidak membuatnya terbaca kosong
+                            body_text = await page.evaluate("document.body ? document.body.textContent.trim() : ''")
+                            is_blank = len(body_text) < 50  # Halaman tidak merender DOM sama sekali
                             has_crash_text = "Aw, Snap!" in body_text or "Error code:" in body_text or "STATUS_BREAKPOINT" in body_text
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan")
