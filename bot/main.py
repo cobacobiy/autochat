@@ -1341,12 +1341,12 @@ async def run_bot():
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan")
                             try:
-                                error_btn = page.locator("button", has_text="Coba Lagi")
-                                if await error_btn.count() > 0:
+                                error_btn = page.get_by_role("button", name=re.compile("Coba Lagi", re.IGNORECASE))
+                                if await error_btn.count() > 0 and await error_btn.first.is_visible():
                                     log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengklik tombol Coba Lagi...")
                                     await error_btn.first.click(timeout=3000)
                                     await page.wait_for_timeout(3000)
-                                    if await error_btn.count() > 0:
+                                    if await error_btn.count() > 0 and await error_btn.first.is_visible():
                                         has_crash_text = True
                             except Exception:
                                 pass
