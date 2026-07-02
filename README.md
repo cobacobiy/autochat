@@ -62,7 +62,7 @@ Untuk pengguna Claude:
    ```bash
    AI_PROVIDER=claude
    ANTHROPIC_API_KEY=sk-ant-xxx...
-   ANTHROPIC_MODEL=claude-3-haiku-20240307
+   ANTHROPIC_MODEL=claude-3-5-haiku-latest
    ```
 
 ---
