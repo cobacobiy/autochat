@@ -252,10 +252,12 @@ async def get_ai_reply(buyer_message: str) -> str:
                     if not GEMINI_API_KEY:
                         log.error("GEMINI_API_KEY is not set!")
                         return "TIDAK TAHU"
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+                    # Default to gemini-flash-latest as 1.5 is deprecated
+                    model_name = GEMINI_MODEL if GEMINI_MODEL and "1.5" not in GEMINI_MODEL else "gemini-flash-latest"
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
                     payload = {
-                        "system_instruction": {"parts": {"text": system_prompt}},
-                        "contents": {"parts": {"text": buyer_message}},
+                        "systemInstruction": {"parts": [{"text": system_prompt}]},
+                        "contents": [{"parts": [{"text": buyer_message}]}],
                         "generationConfig": {"temperature": 0.0, "topP": 0.1}
                     }
                     resp = await client.post(url, json=payload)
