@@ -238,10 +238,12 @@ async def get_ai_reply(buyer_message: str) -> str:
                     if not GEMINI_API_KEY:
                         log.error("GEMINI_API_KEY is not set!")
                         return "TIDAK TAHU"
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+                    # Default to gemini-flash-latest as 1.5 is deprecated
+                    model_name = GEMINI_MODEL if GEMINI_MODEL and "1.5" not in GEMINI_MODEL else "gemini-flash-latest"
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
                     payload = {
-                        "system_instruction": {"parts": {"text": system_prompt}},
-                        "contents": {"parts": {"text": buyer_message}},
+                        "systemInstruction": {"parts": [{"text": system_prompt}]},
+                        "contents": [{"parts": [{"text": buyer_message}]}],
                         "generationConfig": {"temperature": 0.0, "topP": 0.1}
                     }
                     resp = await client.post(url, json=payload)
@@ -1104,6 +1106,24 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     log.info("Buyer message context: %s", buyer_message[:100])
                     reply_text = await get_ai_reply(buyer_message)
                 
+                if reply_text == "TIDAK TAHU":
+                    log.warning("👉 API Error / Fallback ke TIDAK TAHU: %s", buyer_message)
+                    if has_real_buyer_message:
+                        try:
+                            clean_msg = re.sub(r'\d{1,2}:\d{2}$', '', buyer_message).strip()
+                            with open(UNANSWERED_PATH, "a", encoding="utf-8") as f:
+                                f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {clean_msg}\nJ: \n")
+                        except Exception as e:
+                            log.error("Gagal mencatat: %s", e)
+                        log.info("SKIP: Fallback TIDAK TAHU, biarkan admin jawab.")
+                        replied_cache[cache_key] = time.time()
+                        DAILY_UNANSWERED_COUNT += 1
+                        continue
+                    else:
+                        replied_cache[cache_key] = time.time()
+                        DAILY_SKIP_COUNT += 1
+                        continue
+
                 if "tidak tahu" in reply_text.lower() or "maaf" in reply_text.lower() or (reply_text == DEFAULT_REPLY and not force_default_reply):
                     log.warning("👉 AI mungkin tidak tahu/meminta maaf untuk: %s", buyer_message)
                     
