@@ -293,7 +293,7 @@ async def get_ai_reply(buyer_message: str) -> str:
                             {"role": "user", "content": buyer_message}
                         ],
                         "stream": False,
-                        "options": {"temperature": 0.0, "top_p": 0.1}
+                        "options": {"temperature": 0.0, "top_p": 0.1, "num_predict": 200}
                     })
                     if resp.status_code == 200:
                         reply = resp.json().get("message", {}).get("content", "").strip()
@@ -326,6 +326,11 @@ def _clean_ai_reply(reply: str) -> str:
     if "t:" in reply.lower() and "\nj:" in reply.lower():
         log.warning("AI hallucinated Q&A format. Forcing TIDAK TAHU.")
         return "TIDAK TAHU"
+        
+    if len(reply) > 400:
+        log.warning("AI reply is suspiciously long (%d chars), likely a hallucination loop. Forcing TIDAK TAHU.", len(reply))
+        return "TIDAK TAHU"
+        
     return reply
 
 
@@ -1230,6 +1235,7 @@ async def run_bot():
                                 "--disable-gpu",
                                 "--disable-software-rasterizer",
                                 "--js-flags=--max-old-space-size=4096",
+                                "--hide-crash-restore-bubble",
                             ],
                             viewport={"width": 1280, "height": 900},
                         ),
@@ -1341,7 +1347,7 @@ async def run_bot():
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan")
                             try:
-                                error_btn = page.get_by_role("button", name=re.compile("Coba Lagi", re.IGNORECASE))
+                                error_btn = page.get_by_text("Coba Lagi", exact=True)
                                 if await error_btn.count() > 0 and await error_btn.first.is_visible():
                                     log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengklik tombol Coba Lagi...")
                                     await error_btn.first.click(timeout=3000)
