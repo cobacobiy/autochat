@@ -17,7 +17,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import httpx
 
 from playwright.async_api import async_playwright, Page
-from playwright_stealth import stealth_async
+from playwright_stealth import Stealth
 
 # ── Logging & Directory setup ──────────────────────────────────────────────────
 LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
@@ -1254,7 +1254,7 @@ async def run_bot():
                 """)
 
                 page = context.pages[0] if context.pages else await context.new_page()
-                await stealth_async(page)
+                await Stealth().apply_stealth_async(context)
 
                 cycle_count = 0
                 last_refresh_time = time.time()
