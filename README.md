@@ -1,38 +1,39 @@
 # Shopee Auto-Reply Bot 🤖
 
-Bot Playwright berbasis Docker untuk auto-reply chat Shopee Seller menggunakan AI (Gemini / Ollama lokal), dengan sesi persisten dan akses VNC untuk intervensi manual.
+Bot otomatis berbasis **Playwright**, **Docker**, dan **GitHub Actions** untuk membalas chat Shopee Seller secara otomatis menggunakan AI (**Google Gemini**). Bot ini dilengkapi dengan sesi persisten, akses VNC untuk intervensi manual, dan pipeline CI/CD penuh untuk *deployment* ganda (*Main* & *Preview*).
 
 ---
 
-## Alur Kerja Bot (Workflow Saat Ini)
+## Arsitektur Sistem
 
-Bot bekerja secara otomatis merespons pesan masuk dari pembeli berdasarkan pedoman toko yang telah ditentukan (`store_knowledge.txt`). Berikut adalah detail kapan bot akan membalas dan kapan tidak:
+AutoChat dibangun dengan arsitektur modern yang berfokus pada stabilitas, keamanan, dan otomasi:
+
+1. **Core Script (Python & Playwright)**: Bot berjalan di atas mesin Python asinkron (`asyncio`) yang mengendalikan browser *headless* via Playwright. Skrip ini bertugas mensimulasikan klik, *scroll*, dan ketikan layaknya manusia agar tidak terdeteksi sebagai spammer oleh Shopee.
+2. **AI Engine (Google Gemini)**: Memanfaatkan model `gemini-flash-latest` melalui REST API Google Generative AI. Gemini membaca riwayat percakapan pembeli dan membandingkannya dengan Pedoman Toko sebelum menghasilkan balasan.
+3. **Containerization (Docker & Supervisord)**: Lingkungan *runtime* dibungkus rapi dalam kontainer Docker yang berisi Xvfb (Virtual Framebuffer), x11vnc, dan noVNC. `supervisord` memastikan semua layanan (termasuk skrip bot) tetap menyala dan *auto-restart* jika terjadi *crash*.
+4. **CI/CD Pipeline (GitHub Actions)**: 
+   - **Main Branch**: Lingkungan produksi stabil.
+   - **Preview Environment**: Otomatis menyala setiap ada *Pull Request* dan terisolasi dari produksi. Memungkinkan *testing* fitur baru (seperti aturan AI yang lebih luwes) tanpa merusak bot utama.
+
+---
+
+## Logika & Alur Kerja Bot (Workflow)
+
+Bot didesain untuk bersikap ramah ala *Customer Service* manusia, bukan sekadar mesin penjawab otomatis kaku.
 
 ### 🟢 Kapan Bot Membalas Pesan?
-1. **Pertanyaan Sesuai Pedoman Toko:** Bot akan membalas menggunakan jawaban AI (Gemini/Ollama) jika pertanyaan pembeli sesuai atau ada jawabannya di dalam file `store_knowledge.txt`.
-2. **Pembeli Mengetik Pesan Baru:** Jika pembeli mengirim pesan teks biasa atau pesan gambar (disertai teks penjelasan sebelumnya), bot akan memproses pesan tersebut.
-3. **Belum Mencapai Batas Harian:** Bot akan terus membalas selama jumlah balasan harian belum melampaui `MAX_DAILY_REPLIES` (default: 500).
+1. **Pertanyaan Umum / FAQ:** Jika pembeli menanyakan seputar stok, alamat pengiriman, atau kendala umum yang sudah terdaftar di `store_knowledge.txt`, Gemini akan merangkai jawaban natural berdasarkan data tersebut.
+2. **Permintaan Varian/Warna:** Gemini sudah diprogram untuk menyuruh pembeli menuliskan warna atau motif di "Catatan untuk penjual" sebelum *checkout*.
+3. **Pengiriman Buru-buru:** Jika pembeli menanyakan pengiriman, Gemini akan menjanjikan pengiriman hari ini untuk Instan/Sameday, atau memohon menunggu antrean untuk Reguler.
+4. **Obrolan Santai:** Bot akan merespons sapaan (misal: "Halo min") dengan ramah.
 
 ### 🔴 Kapan Bot TIDAK Membalas Pesan (Skip)?
-1. **Admin Sudah Membalas:** Jika pesan terakhir di chat dikirim oleh Admin Manusia (Seller), bot akan mundur dan tidak akan menimpa/double reply.
-2. **AI Tidak Tahu Jawabannya:** Jika pertanyaan pembeli **tidak ada** di dalam `store_knowledge.txt`, AI akan menghasilkan output "TIDAK TAHU".
-   - Bot **TIDAK AKAN** mengirimkan pesan "Tidak Tahu" atau mengarang bebas.
-   - Pertanyaan pembeli tersebut akan dicatat secara diam-diam ke dalam file `unanswered_questions.txt` agar admin manusia bisa mereview dan menjawabnya secara manual.
-3. **Pesan Singkat (Basa-basi):** Bot otomatis mengabaikan pesan non-pertanyaan yang singkat seperti *"ok", "oke", "baik", "terima kasih", "makasih", "siap", "sip"*, agar tidak membuang-buang token AI.
-4. **Chat Diambil Alih Asisten AI Shopee:** Jika chat sudah ditangani oleh Asisten AI bawaan Shopee, bot tidak akan ikut campur.
-5. **Chat Telah Diakhiri:** Jika chat sudah ditutup otomatis oleh sistem Shopee.
-
----
-
-## Hal-Hal yang Perlu Dilakukan Bot (Spesifikasi Teknis)
-Berikut daftar tugas yang dilakukan bot di belakang layar agar semuanya jelas:
-1. **Auto-Reload Knowledge:** Bot membaca ulang file `store_knowledge.txt` secara berkala tanpa perlu restart.
-2. **Deteksi Pesan Seller:** Memeriksa struktur DOM Shopee (warna background, posisi gelembung chat, tag `isSeller`) untuk memastikan pesan dikirim oleh admin manusia atau bot.
-3. **Ekstraksi Pesan Pembeli:** Mencari pesan terakhir dari pembeli di halaman utama atau lewat pop-up "Riwayat Chat" jika pesannya terlalu panjang.
-4. **Proteksi Halusinasi AI:** Memfilter awalan aneh dari AI (seperti "Anda: ", "Jawaban: ") dan mendisiplinkan AI agar **wajib** menjawab `TIDAK TAHU` jika informasi tidak ada di pedoman.
-5. **Auto-Cache (Pencegah Spam):** Menyimpan cache `username + potongan pesan` agar bot tidak merespons pertanyaan yang sama berulang kali dalam waktu berdekatan.
-6. **Mencatat Pertanyaan Sulit:** Menambahkan log ke `unanswered_questions.txt` beserta *timestamp* dan *username* pembeli jika AI angkat tangan.
-7. **Bypass UI Shopee:** Mengetik ke dalam elemen `contenteditable` menggunakan simulasi *keyboard typing* karena Shopee memblokir input standar via `value`.
+1. **Admin Sudah Turun Tangan:** Jika pesan terakhir di ruang chat dikirim oleh Admin Manusia (Seller), bot akan otomatis mundur dan tidak akan menimpa balasan admin.
+2. **AI Benar-benar Tidak Tahu:** Jika pertanyaan *sangat spesifik* (contoh: komplain barang rusak, kendala resi, atau spesifikasi teknis yang tidak ada di pedoman), Gemini tidak akan mengarang bebas (halusinasi).
+   - Bot akan membalas dengan sopan: *"Maaf kak, untuk hal itu saya kurang tahu/akan saya cek dulu."*
+   - Pesan yang sulit ini akan **dicatat diam-diam** ke dalam file `unanswered_questions.txt` agar admin toko bisa menindaklanjutinya di pagi hari.
+3. **Pesan Singkat (Basa-basi):** Kata-kata seperti *"ok", "oke", "baik", "terima kasih"* akan dilewati agar tidak membuang kuota API.
+4. **Chat Shopee AI:** Jika Asisten AI bawaan Shopee mengambil alih, bot akan diam.
 
 ---
 
@@ -40,59 +41,43 @@ Berikut daftar tugas yang dilakukan bot di belakang layar agar semuanya jelas:
 
 ```
 autochat/
+├── .github/workflows/
+│   └── ci-cd.yml         # Pipeline CI/CD untuk validasi, build, dan deploy (Main/Preview)
 ├── bot/
-│   ├── main.py           # Bot daemon utama (Playwright + polling loop)
-│   ├── requirements.txt  # Python dependencies
+│   ├── main.py           # Bot daemon utama (Playwright + Gemini API)
+│   ├── requirements.txt  # Python dependencies (Playwright, httpx, python-dotenv)
 │   ├── Dockerfile        # Image dengan Chromium + noVNC + supervisord
 │   └── supervisord.conf  # Process manager (bot, Xvfb, VNC, noVNC)
-├── docker-compose.yml    # Orchestration + volume mounts
-├── store_knowledge.txt   # File Pedoman Toko untuk jawaban AI
-├── unanswered_questions.txt # Log pertanyaan yang gagal dijawab AI
-├── bot-profile/          # (auto-created) Chromium persistent profile
-└── logs/                 # (auto-created) Log files
+├── docker-compose.yml    # Konfigurasi deploy docker lokal/runner
+├── store_knowledge.txt   # File Pedoman Toko / SOP CS untuk jawaban Gemini
+├── unanswered_questions.txt # Log histori pertanyaan sulit yang butuh bantuan admin
+├── .env                  # Penyimpanan API Key dan variabel environment (JANGAN DI-COMMIT)
+└── logs/                 # Folder hasil logging sistem
 ```
 
 ---
 
-## Cara Pakai
+## Cara Menjalankan Bot
 
-### 1. Konfigurasi
-- Pastikan mengisi API Key Gemini di variabel `GEMINI_API_KEY` (di environment atau kode) agar AI pintar bisa menyala.
-- Isi FAQ / panduan toko di file `store_knowledge.txt`.
-
-### 2. Build Image
+### 1. Konfigurasi Awal
+Salin `.env.example` menjadi `.env` lalu masukkan API Key Google Gemini Anda:
 ```bash
-docker compose build
+GEMINI_API_KEY=AIzaSy...
+GEMINI_MODEL=gemini-flash-latest
 ```
+Isi juga pedoman dan FAQ toko Anda ke dalam `store_knowledge.txt`.
 
-### 3. Login Manual (Pertama Kali)
-Karena Shopee memerlukan login OTP di awal:
+### 2. Login Shopee (Pertama Kali Saja)
+Karena Shopee memerlukan login OTP/QR, jalankan bot secara *interactive* terlebih dahulu:
 ```bash
 docker compose up
-# Buka browser → http://localhost:6080
-# Login ke Shopee Seller secara manual
-# Sesi akan tersimpan di profil bot
 ```
+1. Buka browser dan kunjungi `http://localhost:6080` (atau IP server Anda port `6081` jika Preview).
+2. Login ke Shopee Seller Center. Sesi akan tersimpan permanen di volume `shopee-profile`.
+3. Matikan kontainer (`Ctrl+C`).
 
-### 4. Jalankan sebagai Service
-Setelah login sukses:
+### 3. Jalankan Mode Produksi (Background)
 ```bash
 docker compose up -d
 ```
-Bot akan polling setiap 5 detik. Pantau logs dengan:
-```bash
-docker compose logs -f shopee-bot
-```
-
----
-
-## Kustomisasi Pengetahuan AI
-Anda cukup mengedit file `store_knowledge.txt` kapan saja tanpa perlu me-restart bot. Contoh format:
-```text
-T: Dikirim dari mana kak? / drmn / darimana / dikirim drmn
-J: Pengiriman dari Penjaringan, Jakarta Utara kak.
-
-T: Barang ready?
-J: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..
-```
-Jika ada pembeli yang bertanya di luar pedoman ini, bot akan membiarkannya dan mencatatnya di `unanswered_questions.txt`.
+Bot akan otomatis berjalan di balik layar dan melakukan *polling* chat baru setiap 10 detik. Jika Anda mengubah `store_knowledge.txt`, bot akan otomatis membaca perubahannya tanpa perlu di-*restart*!
