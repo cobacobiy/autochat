@@ -1215,23 +1215,38 @@ async def run_bot():
                         os.unlink(lock_file)
                     except Exception:
                         pass
-                
-                context = await p.chromium.launch_persistent_context(
-                    user_data_dir=PROFILE_DIR,
-                    headless=os.getenv("HEADLESS", "true").lower() == "true",
-                    ignore_default_args=["--enable-automation"],
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-gpu",
-                        "--disable-software-rasterizer",
-                        "--js-flags=--max-old-space-size=4096",
-                    ],
-                    viewport={"width": 1280, "height": 900},
-                )
-
+                try:
+                    context = await asyncio.wait_for(
+                        p.chromium.launch_persistent_context(
+                            user_data_dir=PROFILE_DIR,
+                            headless=os.getenv("HEADLESS", "true").lower() == "true",
+                            ignore_default_args=["--enable-automation"],
+                            args=[
+                                "--no-sandbox",
+                                "--disable-setuid-sandbox",
+                                "--disable-dev-shm-usage",
+                                "--disable-blink-features=AutomationControlled",
+                                "--disable-gpu",
+                                "--disable-software-rasterizer",
+                                "--js-flags=--max-old-space-size=4096",
+                            ],
+                            viewport={"width": 1280, "height": 900},
+                        ),
+                        timeout=60.0
+                    )
+                except Exception as launch_err:
+                    log.error("Failed to launch Chromium (timeout or error): %s", launch_err)
+                    log.info("Killing dangling Chromium processes to recover...")
+                    import subprocess
+                    if os.name == 'nt':
+                        subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], capture_output=True)
+                    else:
+                        subprocess.run(["pkill", "-f", "chrome"], capture_output=True)
+                        subprocess.run(["pkill", "-f", "chromium"], capture_output=True)
+                    
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=5)
+                    log.error("Restarting script to ensure clean Playwright state...")
+                    break
                 # Anti-bot stealth: override navigator.webdriver
                 await context.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', { get: () => false });
