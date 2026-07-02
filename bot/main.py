@@ -1336,6 +1336,18 @@ async def run_bot():
                             is_blank = len(body_text) < 10  # Halaman tidak merender apa-apa
                             has_crash_text = "Aw, Snap!" in body_text or "Error code:" in body_text or "STATUS_BREAKPOINT" in body_text
                             
+                            # Cek popup error UI Shopee ("Terjadi Kesalahan")
+                            try:
+                                error_btn = page.locator("button", has_text="Coba Lagi")
+                                if await error_btn.count() > 0:
+                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengklik tombol Coba Lagi...")
+                                    await error_btn.first.click(timeout=3000)
+                                    await page.wait_for_timeout(3000)
+                                    if await error_btn.count() > 0:
+                                        has_crash_text = True
+                            except Exception:
+                                pass
+                            
                             if (is_blank and "login" not in page.url and "auth" not in page.url) or has_crash_text:
                                 log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Melakukan force reload...")
                                 try:
