@@ -37,6 +37,36 @@ Bot didesain untuk bersikap ramah ala *Customer Service* manusia, bukan sekadar 
 
 ---
 
+## Dukungan Multi-AI / AI Lokal (Ollama & Claude)
+
+Secara default, AutoChat menggunakan **Google Gemini**. Namun, bot ini juga mendukung penggunaan **Ollama** (AI Lokal gratis tanpa internet) dan **Anthropic Claude**.
+
+### Menggunakan Ollama (AI Lokal)
+Jika Anda tidak ingin menggunakan API Key dari Google dan memiliki RAM komputer yang cukup besar, Anda bisa beralih ke Ollama.
+
+**Langkah yang harus diubah:**
+1. Buka file `.env`.
+2. Ubah `AI_PROVIDER` dan tambahkan URL serta nama model (contoh: `qwen2`):
+   ```bash
+   AI_PROVIDER=ollama
+   OLLAMA_MODEL=qwen2
+   OLLAMA_URL=http://localhost:11434
+   ```
+3. Pastikan aplikasi [Ollama](https://ollama.com) sudah terinstal dan modelnya sudah diunduh (`ollama run qwen2`).
+4. Jika menjalankan lewat Docker, aktifkan/buka komentar blok `ollama` di `docker-compose.yml`.
+
+### Menggunakan Anthropic Claude
+Untuk pengguna Claude:
+1. Buka `.env`.
+2. Sesuaikan konfigurasi berikut:
+   ```bash
+   AI_PROVIDER=claude
+   ANTHROPIC_API_KEY=sk-ant-xxx...
+   ANTHROPIC_MODEL=claude-3-haiku-20240307
+   ```
+
+---
+
 ## Struktur Project
 
 ```
