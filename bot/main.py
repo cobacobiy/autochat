@@ -217,29 +217,15 @@ def get_auto_reply(message: str) -> str:
 
 def build_system_prompt() -> str:
     return (
-        "Anda adalah Customer Service toko. Anda HANYA boleh menjawab berdasarkan Pedoman Toko berikut ini:\n\n"
-        f"=== PEDOMAN TOKO ===\n{STORE_KNOWLEDGE}\n====================\n\n"
-        "ATURAN SUPER KETAT:\n"
-        "1. Jawab HANYA menggunakan informasi dari Pedoman Toko di atas.\n"
-        "2. DILARANG KERAS mengarang, menebak, memberikan janji palsu, meminta maaf yang tidak perlu, atau menambahkan informasi yang tidak ada di Pedoman Toko.\n"
-        "3. Jika pertanyaan pembeli tentang status pesanan, pembayaran, komplain, resi, minta foto, ATAU TIDAK ADA jawabannya di Pedoman Toko, Anda WAJIB membalas dengan KATA INI SAJA: TIDAK TAHU\n"
-        "4. Jawablah langsung tanpa mengetik 'J:', 'Anda:' atau awalan lainnya.\n"
-        "5. JANGAN merangkai kalimat sendiri atau membuat kalimat sopan/formal panjang (seperti 'Mohon maaf atas ketidaknyamanan'). Jika pertanyaan bukan FAQ umum, WAJIB jawab TIDAK TAHU.\n"
-        "6. PASTIKAN subjek/nama barang persis sama. Jika pembeli bertanya 'Lakban' tapi di pedoman hanya ada 'Sampul', WAJIB jawab TIDAK TAHU. Jangan mencocokkan kata sifat saja seperti 'bening'.\n\n"
-        "CONTOH BENAR JIKA PERTANYAAN ADA DI PEDOMAN:\n"
-        "Pembeli: Barang ready?\n"
-        "Jawaban: Semua barang yang variannya bisa di-klik di etalase berarti ready stock kak, silakan diorder..\n\n"
-        "CONTOH BENAR JIKA PERTANYAAN TIDAK ADA DI PEDOMAN ATAU TENTANG PESANAN:\n"
-        "Pembeli: yg paket saya dikirim nya gambar nya kaya gimana ya kak apa bisa liat\n"
-        "Jawaban: TIDAK TAHU\n\n"
-        "Pembeli: Tolong diusahakan pagi ya kak pengirimannya\n"
-        "Jawaban: TIDAK TAHU\n\n"
-        "Pembeli: Tpi udh byar lwat transfer kak gimana\n"
-        "Jawaban: TIDAK TAHU\n\n"
-        "Pembeli: kak kok pesanan saya belum sampai?\n"
-        "Jawaban: TIDAK TAHU\n\n"
-        "Pembeli: Lakbanya yg bening ya\n"
-        "Jawaban: TIDAK TAHU"
+        "Anda adalah Asisten Customer Service toko online yang ramah, sopan, dan luwes.\n\n"
+        f"=== KNOWLEDGE BASE ===\n{STORE_KNOWLEDGE}\n====================\n\n"
+        "Aturan Menjawab:\n"
+        "1. Jawab pertanyaan spesifik mengenai produk berdasarkan [KNOWLEDGE BASE].\n"
+        "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Pembeli saat checkout ya kak 😊\"\n"
+        "3. Jika pembeli meminta dikirim cepat (buru-buru/kapan dikirim), jawab: \"Pesanan kakak akan segera kami proses dan kirimkan sesuai antrean ya kak, mohon ditunggu 😊\"\n"
+        "4. Gunakan akal sehat ala CS manusia. Jika ada sapaan atau obrolan santai, balaslah dengan ramah.\n"
+        "5. Jika ada pertanyaan spesifik tentang detail teknis yang benar-benar tidak Anda ketahui dan tidak ada di panduan, barulah Anda boleh meminta maaf dan sampaikan bahwa Anda akan meneruskannya ke admin toko. Jangan pernah mengarang spesifikasi atau harga.\n"
+        "6. Jawab sesingkat dan se-natural mungkin, tidak perlu kaku."
     )
 
 async def get_ai_reply(buyer_message: str) -> str:
@@ -1118,26 +1104,19 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     log.info("Buyer message context: %s", buyer_message[:100])
                     reply_text = await get_ai_reply(buyer_message)
                 
-                if "tidak tahu" in reply_text.lower() or (reply_text == DEFAULT_REPLY and not force_default_reply):
-                    log.warning("👉 AI tidak tahu jawaban untuk: %s", buyer_message)
+                if "tidak tahu" in reply_text.lower() or "maaf" in reply_text.lower() or (reply_text == DEFAULT_REPLY and not force_default_reply):
+                    log.warning("👉 AI mungkin tidak tahu/meminta maaf untuk: %s", buyer_message)
                     
                     if has_real_buyer_message:
                         try:
                             clean_msg = re.sub(r'\d{1,2}:\d{2}$', '', buyer_message).strip()
                             with open(UNANSWERED_PATH, "a", encoding="utf-8") as f:
-                                f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {clean_msg}\nJ: \n")
+                                f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {clean_msg}\nJ: {reply_text}\n")
                         except Exception as e:
                             log.error("Gagal mencatat: %s", e)
                         
-                        log.info("SKIP: Pertanyaan tidak ada di knowledge. Biarkan admin jawab.")
-                        replied_cache[cache_key] = time.time()
+                        log.info("Dicatat ke unanswered_questions.txt untuk di-review admin, tapi tetap dikirimkan balasan ala CS.")
                         DAILY_UNANSWERED_COUNT += 1
-                        continue
-                    else:
-                        log.info("SKIP: Tidak ada pesan pembeli. Tidak perlu menjawab.")
-                        replied_cache[cache_key] = time.time()
-                        DAILY_SKIP_COUNT += 1
-                        continue
 
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
                 log.info("Reply text: %s", reply_text[:80])
