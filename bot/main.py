@@ -1315,6 +1315,25 @@ async def run_bot():
                             await page.bring_to_front()
                             await page.wait_for_timeout(1000)
     
+                        # Cek apakah halaman crash / blank putih (Aw Snap / Out of Memory)
+                        try:
+                            body_text = await page.evaluate("document.body ? document.body.innerText.trim() : ''")
+                            is_blank = len(body_text) < 10  # Halaman tidak merender apa-apa
+                            has_crash_text = "Aw, Snap!" in body_text or "Error code:" in body_text or "STATUS_BREAKPOINT" in body_text
+                            
+                            if (is_blank and "login" not in page.url and "auth" not in page.url) or has_crash_text:
+                                log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Melakukan force reload...")
+                                try:
+                                    await page.goto("about:blank", wait_until="domcontentloaded")
+                                    await page.wait_for_timeout(2000)
+                                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                                    await page.wait_for_timeout(5000)
+                                except Exception as reload_err:
+                                    log.error("Gagal saat mencoba force reload halaman blank: %s", reload_err)
+                                continue # Lanjut iterasi baru agar tidak mengeksekusi handle_unread_chats di DOM yang kosong
+                        except Exception as e:
+                            log.warning("Gagal mengecek status halaman blank: %s", e)
+
                         # Check if main tab is stuck on captcha/error
                         if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
                             log.warning("Main tab is on captcha/error page (%s). Navigating back to chat...", page.url)
