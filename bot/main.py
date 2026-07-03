@@ -1205,7 +1205,6 @@ async def run_bot():
                 """)
 
                 page = context.pages[0] if context.pages else await context.new_page()
-                await Stealth().apply_stealth_async(context)
 
                 cycle_count = 0
                 last_refresh_time = time.time()
