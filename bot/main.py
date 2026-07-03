@@ -434,14 +434,24 @@ async def setup_chat_view(page) -> bool:
             HAS_SETUP_TABS = False
             return False
             
-        html_content = (await page.content()).lower()
-        if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-            log.info("Detected 'Coba Lagi' error modal. Reloading page via goto...")
+        coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
+        if await coba_lagi_btn.is_visible(timeout=1000):
+            log.info("Detected 'Coba Lagi' error modal. Reloading page directly...")
             try:
-                await page.goto("about:blank", timeout=10000)
+                await page.reload(wait_until="domcontentloaded", timeout=30000)
             except Exception:
                 pass
-            await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(5000)
+            HAS_SETUP_TABS = False
+            return False
+
+        html_content = (await page.content()).lower()
+        if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
+            log.info("Detected 'Coba Lagi' error modal from HTML content. Reloading page directly...")
+            try:
+                await page.reload(wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass
             await page.wait_for_timeout(5000)
             HAS_SETUP_TABS = False
             return False
@@ -805,7 +815,21 @@ async def send_reply(page, reply_text: str, username: str) -> bool:
         return False
 
     log.info("Found input box via: %s", input_sel_used)
-    await input_box.click()
+    
+    # Cek apakah ada Captcha yang menutupi layar
+    captcha_modal = await page.query_selector("#sfu-captcha-modal")
+    if captcha_modal:
+        is_visible = await captcha_modal.is_visible()
+        if is_visible:
+            log.warning("🚨 CAPTCHA terdeteksi menutupi layar! Mereload halaman...")
+            return -1
+
+    try:
+        await input_box.click(timeout=5000)
+    except Exception as e:
+        log.warning("Gagal mengklik kotak input (mungkin terhalang elemen lain): %s", e)
+        return False
+
     await page.wait_for_timeout(300)
 
     tag_name = await input_box.evaluate("el => el.tagName.toLowerCase()")
@@ -863,6 +887,11 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
+                    coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
+                    if await coba_lagi_btn.is_visible(timeout=1000):
+                        log.warning("🚨 Popup 'Coba Lagi' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
+                        return -1
+
                     html_content = (await page.content()).lower()
                     if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
                         log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
@@ -961,8 +990,11 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 try:
                     # Hindari force=True karena itu memicu deteksi bot Shopee (klik tidak wajar).
                     # Kita klik spesifik di bagian teks/avatar agar tidak memicu tombol menu (tiga titik).
-                    target = item.locator("span, [class*='name']").first
-                    await target.click(timeout=3000)
+                    target = await item.query_selector("span, [class*='name']")
+                    if target:
+                        await target.click(timeout=3000)
+                    else:
+                        await item.click(timeout=3000)
                 except Exception as e:
                     log.warning("Gagal mengklik chat secara normal: %s", e)
                     try:
@@ -1131,7 +1163,10 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
                 log.info("Reply text: %s", reply_text[:80])
 
-                if await send_reply(page, reply_text, username):
+                reply_status = await send_reply(page, reply_text, username)
+                if reply_status == -1:
+                    return -1
+                elif reply_status:
                     replied_cache[cache_key] = time.time()
                     DAILY_REPLY_COUNTER += 1
                     DAILY_AI_REPLIED_COUNT += 1
@@ -1339,25 +1374,22 @@ async def run_bot():
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan")
                             try:
-                                html_content = (await page.content()).lower()
-                                if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengetik ulang alamat web...")
-                                    try:
-                                        await page.goto("about:blank", timeout=10000)
-                                    except Exception:
-                                        pass
-                                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
-                                    await page.wait_for_timeout(5000)
+                                coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
+                                if await coba_lagi_btn.is_visible(timeout=1000):
+                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Menandai untuk reload...")
                                     has_crash_text = True
+                                else:
+                                    html_content = (await page.content()).lower()
+                                    if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
+                                        log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Menandai untuk reload...")
+                                        has_crash_text = True
                             except Exception:
                                 pass
                             
                             if (is_blank and "login" not in page.url and "auth" not in page.url) or has_crash_text:
                                 log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Melakukan force reload...")
                                 try:
-                                    await page.goto("about:blank", wait_until="domcontentloaded")
-                                    await page.wait_for_timeout(2000)
-                                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
+                                    await page.reload(wait_until="domcontentloaded", timeout=30000)
                                     await page.wait_for_timeout(5000)
                                 except Exception as reload_err:
                                     log.error("Gagal saat mencoba force reload halaman blank: %s", reload_err)
@@ -1401,11 +1433,7 @@ async def run_bot():
                         if count == -1:
                             log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat!")
                             try:
-                                await page.goto("about:blank", timeout=10000)
-                            except Exception:
-                                pass
-                            try:
-                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
+                                await page.reload(wait_until="domcontentloaded", timeout=30000)
                                 await page.wait_for_timeout(5000)
                                 HAS_SETUP_TABS = False
                             except Exception as e:
