@@ -164,29 +164,46 @@ def reload_knowledge():
 
 
 GET_CHAT_ITEMS_JS = r"""() => {
+    let items = [];
     const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
     if (cells.length > 0) {
-        return Array.from(cells);
-    }
-    const allDivs = document.querySelectorAll('div');
-    const items = [];
-    for (const div of allDivs) {
-        const text = div.textContent || '';
-        const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
-                             text.includes('Yesterday') || 
-                             text.includes('Kemarin') ||
-                             /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-        const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
-        if (hasTimestamp && text.length < 300 && isNotOrder) {
-            const rect = div.getBoundingClientRect();
-            if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                if (rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth * 0.4) {
-                    items.push(div);
+        items = Array.from(cells);
+    } else {
+        const allDivs = document.querySelectorAll('div');
+        for (const div of allDivs) {
+            const text = div.textContent || '';
+            const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
+                                 text.includes('Yesterday') || 
+                                 text.includes('Kemarin') ||
+                                 /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
+            const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
+            if (hasTimestamp && text.length < 300 && isNotOrder) {
+                const rect = div.getBoundingClientRect();
+                if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
+                    if (rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth * 0.4) {
+                        items.push(div);
+                    }
                 }
             }
         }
+        items = items.filter(item => !items.some(other => other !== item && item.contains(other)));
     }
-    return items.filter(item => !items.some(other => other !== item && item.contains(other)));
+    
+    // HANYA ambil chat yang memiliki indikator "Belum Dibaca" (titik merah/angka)
+    // atau yang jelas-jelas belum dibalas (teks preview tidak mengandung "Anda:" / "Saya:")
+    return items.filter(item => {
+        const hasUnread = item.querySelector(".unread-badge, .unread-count, [class*='unread']");
+        if (hasUnread) return true;
+        
+        // Pengecekan sekunder (opsional jika badge tidak terdeteksi tapi ada teks baru dari pembeli)
+        const text = (item.textContent || "").toLowerCase();
+        if (text && !text.includes("anda:") && !text.includes("saya:") && !text.includes("you:")) {
+            // Kita kembalikan true untuk berjaga-jaga jika ada pesan baru tapi tanpa badge
+            return true;
+        }
+        
+        return false;
+    });
 }"""
 
 AUTO_REPLIES = {
