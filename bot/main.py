@@ -190,19 +190,9 @@ GET_CHAT_ITEMS_JS = r"""() => {
     }
     
     // HANYA ambil chat yang memiliki indikator "Belum Dibaca" (titik merah/angka)
-    // atau yang jelas-jelas belum dibalas (teks preview tidak mengandung "Anda:" / "Saya:")
+    // Tidak ada pengecekan sekunder agar bot 100% standby dan tidak membuka chat lama yang sudah dibaca
     return items.filter(item => {
-        const hasUnread = item.querySelector(".unread-badge, .unread-count, [class*='unread']");
-        if (hasUnread) return true;
-        
-        // Pengecekan sekunder (opsional jika badge tidak terdeteksi tapi ada teks baru dari pembeli)
-        const text = (item.textContent || "").toLowerCase();
-        if (text && !text.includes("anda:") && !text.includes("saya:") && !text.includes("you:")) {
-            // Kita kembalikan true untuk berjaga-jaga jika ada pesan baru tapi tanpa badge
-            return true;
-        }
-        
-        return false;
+        return item.querySelector(".unread-badge, .unread-count, [class*='unread']") !== null;
     });
 }"""
 
