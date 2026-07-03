@@ -897,11 +897,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 
                 try:
                     await page.evaluate(r'''() => {
-                        document.querySelectorAll('[class*="overlay"], [class*="mask"], [class*="backdrop"]').forEach(el => {
-                            if (el.style.position === 'fixed' || el.style.position === 'absolute') {
-                                el.remove();
-                            }
-                        });
                         document.querySelectorAll('div[role="dialog"]').forEach(d => {
                             if (d.textContent && d.textContent.includes("Riwayat Chat")) d.remove();
                         });
@@ -910,9 +905,15 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     pass
 
                 try:
-                    await item.click(timeout=3000)
-                except Exception:
-                    await item.evaluate("node => node.click()")
+                    # Gunakan force=True agar Playwright mengabaikan overlay transparan
+                    await item.click(force=True, timeout=3000)
+                except Exception as e:
+                    log.warning("Gagal mengklik chat: %s", e)
+                    try:
+                        # Fallback: coba klik elemen teks di dalam chat tersebut
+                        await item.locator("span").first.click(force=True, timeout=2000)
+                    except Exception:
+                        pass
                 await page.wait_for_timeout(2000)
 
                 try:
