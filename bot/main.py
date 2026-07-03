@@ -413,6 +413,11 @@ function isSeller(el, container) {
 
 HAS_SETUP_TABS = False
 
+async def do_human_delay(page, min_ms=2000, max_ms=4500):
+    import random
+    delay = random.randint(min_ms, max_ms)
+    await page.wait_for_timeout(delay)
+
 async def setup_chat_view(page) -> bool:
     global HAS_SETUP_TABS
     """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
@@ -429,9 +434,9 @@ async def setup_chat_view(page) -> bool:
             
         coba_lagi_btn = page.locator("text=Coba Lagi").first
         if await coba_lagi_btn.is_visible(timeout=1000):
-            log.info("Detected 'Coba Lagi' error modal. Clicking...")
-            await coba_lagi_btn.click(force=True)
-            await page.wait_for_timeout(3000)
+            log.info("Detected 'Coba Lagi' error modal. Reloading page...")
+            await page.reload(wait_until="domcontentloaded")
+            await page.wait_for_timeout(5000)
             HAS_SETUP_TABS = False
             return False
     except Exception:
@@ -481,8 +486,9 @@ async def setup_chat_view(page) -> bool:
         trigger_pembeli = page.locator("text=Chat Pembeli").first
         if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
             log.info("Switching to 'Chat Pembeli'...")
+            await do_human_delay(page, 1500, 3000)
             await trigger_penjual.click()
-            await page.wait_for_timeout(1000)
+            await do_human_delay(page, 1500, 3000)
             await page.locator("text=Chat Pembeli").last.click()
             await page.wait_for_timeout(2000)
     except Exception:
@@ -492,10 +498,12 @@ async def setup_chat_view(page) -> bool:
     try:
         semua_chat = page.locator("text=Semua Chat").first
         if await semua_chat.is_visible():
+            await do_human_delay(page, 1500, 3500)
             await semua_chat.click()
             await page.wait_for_timeout(1000)
             semua_pembeli = page.locator("text=Semua Pembeli").first
             if await semua_pembeli.is_visible():
+                await do_human_delay(page, 1500, 3500)
                 await semua_pembeli.click()
                 await page.wait_for_timeout(1000)
     except Exception:
@@ -1296,12 +1304,11 @@ async def run_bot():
                             try:
                                 error_btn = page.locator("text=Coba Lagi").first
                                 if await error_btn.is_visible(timeout=1000):
-                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengklik tombol Coba Lagi...")
-                                    await error_btn.click(force=True)
-                                    await page.wait_for_timeout(3000)
+                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Merefresh halaman...")
+                                    await page.reload(wait_until="domcontentloaded")
+                                    await page.wait_for_timeout(5000)
                                     HAS_SETUP_TABS = False
-                                    if await error_btn.is_visible(timeout=1000):
-                                        has_crash_text = True
+                                    has_crash_text = True
                             except Exception:
                                 pass
                             
