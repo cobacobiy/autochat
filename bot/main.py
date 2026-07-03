@@ -855,8 +855,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
-                    error_btn = page.locator("text=Coba Lagi").first
-                    if await error_btn.is_visible(timeout=500):
+                    body_text = await page.evaluate("document.body ? document.body.textContent : ''")
+                    if "Terjadi Kesalahan" in body_text and "Coba Lagi" in body_text:
                         log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
                         return -1 # Return -1 to signal main loop to reload
                 except Exception:
@@ -937,7 +937,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
                 
                 import random
-                human_delay = random.randint(2000, 4500)
+                human_delay = random.randint(4000, 8000)
                 log.info("Jeda sejenak %d ms layaknya manusia sebelum klik chat agar tidak dicurigai bot...", human_delay)
                 await page.wait_for_timeout(human_delay)
                 
