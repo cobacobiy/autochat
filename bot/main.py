@@ -944,7 +944,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 except Exception:
                     pass
 
-                riwayat_buyer_message = await read_riwayat_chat(page)
+                # riwayat_buyer_message = await read_riwayat_chat(page)
+                riwayat_buyer_message = ""
                 chat_history = await extract_chat_history(page)
 
                 if not chat_history:
