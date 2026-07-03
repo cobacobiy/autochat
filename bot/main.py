@@ -887,8 +887,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                # Cek 5 chat teratas
-                for idx in range(5):
+                # Cek 1 chat teratas saja (standby di paling atas sesuai permintaan user)
+                for idx in range(1):
                     try:
                         item_handle = await page.evaluate_handle(f"(arr) => arr.length > {idx} ? arr[{idx}] : null", elements_handle)
                         item = item_handle.as_element()
