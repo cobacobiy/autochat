@@ -429,10 +429,10 @@ async def setup_chat_view(page) -> bool:
             HAS_SETUP_TABS = False
             return False
             
-        coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again')").first
+        coba_lagi_btn = page.locator("text=Coba Lagi").first
         if await coba_lagi_btn.is_visible(timeout=1000):
             log.info("Detected 'Coba Lagi' error modal. Clicking...")
-            await coba_lagi_btn.click()
+            await coba_lagi_btn.click(force=True)
             await page.wait_for_timeout(3000)
             HAS_SETUP_TABS = False
             return False
@@ -1287,12 +1287,13 @@ async def run_bot():
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan")
                             try:
-                                error_btn = page.get_by_text("Coba Lagi", exact=True)
-                                if await error_btn.count() > 0 and await error_btn.first.is_visible():
+                                error_btn = page.locator("text=Coba Lagi").first
+                                if await error_btn.is_visible(timeout=1000):
                                     log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengklik tombol Coba Lagi...")
-                                    await error_btn.first.click(timeout=3000)
+                                    await error_btn.click(force=True)
                                     await page.wait_for_timeout(3000)
-                                    if await error_btn.count() > 0 and await error_btn.first.is_visible():
+                                    HAS_SETUP_TABS = False
+                                    if await error_btn.is_visible(timeout=1000):
                                         has_crash_text = True
                             except Exception:
                                 pass
