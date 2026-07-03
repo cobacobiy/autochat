@@ -1374,7 +1374,6 @@ async def run_bot():
                             try:
                                 await page.reload(wait_until="domcontentloaded")
                                 await page.wait_for_timeout(5000)
-                                global HAS_SETUP_TABS
                                 HAS_SETUP_TABS = False
                             except Exception as e:
                                 log.error("Gagal reload: %s", e)
