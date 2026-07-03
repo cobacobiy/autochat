@@ -163,6 +163,7 @@ jobs:
               "-e", "POLL_INTERVAL=10",
               "-e", "VNC_PASSWORD=previewpass",
               "-e", "AI_PROVIDER=" + os.environ.get("AI_PROVIDER", "ollama"),
+              "-e", "OLLAMA_URL=http://172.17.0.1:11434/api/generate",
               "-e", "GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", ""),
               "-v", "shopee-bot-profile-preview:/data/shopee-profile",
               "-v", "shopee-bot-logs-preview:/data/logs",
