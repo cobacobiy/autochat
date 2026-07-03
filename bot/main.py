@@ -695,12 +695,18 @@ async def extract_chat_history(page) -> list:
         
         const history = [];
         for (const b of bubbles) {
-            if (b.closest && b.closest('[class*="history"], [class*="riwayat"]')) continue;
-            const text = (b.textContent || '').trim();
+            let text = (b.textContent || '').trim();
             if (!text) continue;
-            if (text.includes('Lihat Semua Riwayat Chat')) continue;
             
-            history.push({ text: text, isSeller: isSeller(b, bestContainer) });
+            // Jika ini adalah kotak preview riwayat, ambil isinya dan perlakukan sebagai pesan pembeli
+            let is_seller_msg = isSeller(b, bestContainer);
+            if (text.includes('Lihat Semua Riwayat Chat') || (b.closest && b.closest('[class*="history"], [class*="riwayat"]'))) {
+                text = text.replace('Lihat Semua Riwayat Chat', '').replace('Riwayat Chat', '').trim();
+                is_seller_msg = false; // Anggap sebagai pesan pembeli agar dijawab
+                if (!text) continue;
+            }
+            
+            history.push({ text: text, isSeller: is_seller_msg });
         }
         
         const cleanHistory = [];
