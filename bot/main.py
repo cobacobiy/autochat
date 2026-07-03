@@ -1258,7 +1258,7 @@ async def run_bot():
                     log.error("Gagal memuat halaman utama Shopee (timeout): %s. Restarting browser...", goto_err)
                     try:
                         await context.close()
-                    except:
+                    except Exception:
                         pass
                     continue
 
