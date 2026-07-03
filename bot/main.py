@@ -471,14 +471,29 @@ async def setup_chat_view(page) -> bool:
             });
         }''')
         
-        # Jika chat sudah tampil DAN tab-tab sudah disetup, kita berhenti di sini.
-        if items_found and HAS_SETUP_TABS:
+        # Cek apakah user memindahkan tab secara manual ke "Chat Hari Ini"
+        is_wrong_tab = await page.evaluate(r'''() => {
+            const tabs = [...document.querySelectorAll('div, span, li, button')];
+            const hariIni = tabs.find(e => e.textContent.trim() === 'Chat Hari Ini');
+            if (hariIni) {
+                const style = window.getComputedStyle(hariIni);
+                if (style.color.includes('238, 77, 45') || style.color.includes('ee4d2d') || hariIni.className.includes('active') || hariIni.getAttribute('aria-selected') === 'true') {
+                    return true;
+                }
+            }
+            return false;
+        }''')
+        
+        # Jika chat sudah tampil DAN tab-tab sudah disetup DAN tab aktifnya benar, kita berhenti di sini.
+        if items_found and HAS_SETUP_TABS and not is_wrong_tab:
             return True
             
-        if not items_found:
+        if not items_found or is_wrong_tab:
+            if is_wrong_tab:
+                log.info("Detected wrong tab (Chat Hari Ini). Resetting tab setup...")
             HAS_SETUP_TABS = False
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Gagal mendeteksi tab chat: %s", e)
 
     # 4. Jika belum tampil (misal baru login), buka tab Chat Pembeli
     try:
