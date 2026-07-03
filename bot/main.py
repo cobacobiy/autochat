@@ -895,6 +895,11 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
                 
+                import random
+                human_delay = random.randint(2000, 4500)
+                log.info("Jeda sejenak %d ms layaknya manusia sebelum klik chat agar tidak dicurigai bot...", human_delay)
+                await page.wait_for_timeout(human_delay)
+                
                 try:
                     await page.evaluate(r'''() => {
                         document.querySelectorAll('div[role="dialog"]').forEach(d => {
