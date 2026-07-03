@@ -163,39 +163,28 @@ def reload_knowledge():
                 log.error("Gagal reload knowledge: %s", e)
 
 
+LAST_TOP_CHAT_STATE = None
+
 GET_CHAT_ITEMS_JS = r"""() => {
-    // Cari semua badge titik merah di sidebar kiri
-    const badges = document.querySelectorAll(".unread-badge, .unread-count, [class*='unread' i], [class*='badge' i], [class*='shopee-react-badge']");
-    const items = [];
+    // Ambil elemen chat PERTAMA (paling atas) dari daftar sidebar kiri
+    const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"], li');
+    if (cells.length > 0) {
+        return [cells[0]]; // HANYA kembalikan 1 chat teratas!
+    }
     
-    for (const badge of badges) {
-        // Pastikan badge ada di area sidebar kiri
-        const rect = badge.getBoundingClientRect();
-        if (rect.left > 0 && rect.left < window.innerWidth * 0.4 && rect.width > 0 && rect.height > 0) {
-            
-            // Coba cari parent container asli (elemen chat yang bisa diklik)
-            let container = badge.closest('[data-cy^="webchat-conversation-cell-root"]') || badge.closest('li');
-            
-            // Jika tidak ada data-cy atau li, naik ke atas mencari container dengan dimensi kotak chat
-            if (!container) {
-                let parent = badge.parentElement;
-                while (parent && parent.tagName !== 'BODY') {
-                    const prect = parent.getBoundingClientRect();
-                    if (prect.height > 20 && prect.height < 150 && prect.width > 100) {
-                        container = parent;
-                        break;
-                    }
-                    parent = parent.parentElement;
-                }
-            }
-            
-            if (container && !items.includes(container)) {
-                items.push(container);
+    // Fallback
+    const allDivs = [...document.querySelectorAll('div')];
+    for (const div of allDivs) {
+        const text = div.textContent || '';
+        const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || text.includes('Yesterday') || text.includes('Kemarin');
+        if (hasTimestamp && text.length > 5 && text.length < 300) {
+            const rect = div.getBoundingClientRect();
+            if (rect.left > 0 && rect.left < window.innerWidth * 0.4 && rect.height > 20 && rect.height < 150) {
+                return [div]; // HANYA kembalikan 1 chat teratas!
             }
         }
     }
-    
-    return items;
+    return [];
 }"""
 
 AUTO_REPLIES = {
@@ -886,25 +875,28 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                for i in range(num_items):
-                    item_handle = await page.evaluate_handle(f"(arr) => arr[{i}]", elements_handle)
-                    item = item_handle.as_element()
-                    if item:
-                        text = await item.inner_text()
-                        lines = [line.strip() for line in text.split('\n') if line.strip()]
-                        if lines:
-                            u_name = lines[0]
-                            if u_name not in visited_usernames:
-                                target_item = item
-                                target_username = u_name
-                                target_index = i
-                                break
-                                
+                global LAST_TOP_CHAT_STATE
+                
+                # HANYA cek chat index 0 (paling atas)
+                item_handle = await page.evaluate_handle("(arr) => arr[0]", elements_handle)
+                item = item_handle.as_element()
+                if item:
+                    text = await item.inner_text()
+                    lines = [line.strip() for line in text.split('\n') if line.strip()]
+                    if lines:
+                        u_name = lines[0]
+                        preview_text = text.strip()
+                        
+                        # Cek apakah chat ini baru (nama atau pesannya beda dari yg terakhir dicek)
+                        if LAST_TOP_CHAT_STATE != (u_name, preview_text):
+                            target_item = item
+                            target_username = u_name
+                            target_index = 0
+                            LAST_TOP_CHAT_STATE = (u_name, preview_text)
+                            
                 if not target_item:
-                    # Tidak ada chat baru di daftar teratas, hentikan pengecekan (tidak perlu scroll ke bawah)
+                    # Tidak ada chat baru di daftar teratas, hentikan pengecekan
                     break
-                    
-                visited_usernames.add(target_username)
                 
                 item = target_item
                 username = target_username
