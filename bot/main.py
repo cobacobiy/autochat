@@ -948,22 +948,9 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 except Exception:
                     pass
 
-                try:
-                    history_btn_selectors = ["text=Lihat History Chat", "text=Lihat Pesan Sebelumnya", "button:has-text('History')", "button:has-text('Sebelumnya')"]
-                    for sel in history_btn_selectors:
-                        try:
-                            history_btn = page.locator(sel).first
-                            if await history_btn.is_visible():
-                                await do_human_delay(page, 1500, 3000)
-                                await history_btn.click()
-                                await page.wait_for_timeout(2000)
-                                break
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-                riwayat_buyer_message = await read_riwayat_chat(page)
+                # Fitur klik Riwayat Chat dinonaktifkan karena rentan terdeteksi sebagai bot.
+                # Kita akan murni mengandalkan history chat yang sudah tampil di layar (DOM utama).
+                riwayat_buyer_message = ""
                 chat_history = await extract_chat_history(page)
 
                 if not chat_history:
