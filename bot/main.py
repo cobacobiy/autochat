@@ -164,37 +164,38 @@ def reload_knowledge():
 
 
 GET_CHAT_ITEMS_JS = r"""() => {
-    let items = [];
-    const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
-    if (cells.length > 0) {
-        items = Array.from(cells);
-    } else {
-        const allDivs = document.querySelectorAll('div');
-        for (const div of allDivs) {
-            const text = div.textContent || '';
-            const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
-                                 text.includes('Yesterday') || 
-                                 text.includes('Kemarin') ||
-                                 /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-            const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
-            if (hasTimestamp && text.length < 300 && isNotOrder) {
-                const rect = div.getBoundingClientRect();
-                if (rect.height > 40 && rect.height < 120 && rect.width > 100) {
-                    if (rect.top < window.innerHeight && rect.bottom > 0 && rect.left < window.innerWidth * 0.4) {
-                        items.push(div);
+    // Cari semua badge titik merah di sidebar kiri
+    const badges = document.querySelectorAll(".unread-badge, .unread-count, [class*='unread' i], [class*='badge' i], [class*='shopee-react-badge']");
+    const items = [];
+    
+    for (const badge of badges) {
+        // Pastikan badge ada di area sidebar kiri
+        const rect = badge.getBoundingClientRect();
+        if (rect.left > 0 && rect.left < window.innerWidth * 0.4 && rect.width > 0 && rect.height > 0) {
+            
+            // Coba cari parent container asli (elemen chat yang bisa diklik)
+            let container = badge.closest('[data-cy^="webchat-conversation-cell-root"]') || badge.closest('li');
+            
+            // Jika tidak ada data-cy atau li, naik ke atas mencari container dengan dimensi kotak chat
+            if (!container) {
+                let parent = badge.parentElement;
+                while (parent && parent.tagName !== 'BODY') {
+                    const prect = parent.getBoundingClientRect();
+                    if (prect.height > 20 && prect.height < 150 && prect.width > 100) {
+                        container = parent;
+                        break;
                     }
+                    parent = parent.parentElement;
                 }
             }
+            
+            if (container && !items.includes(container)) {
+                items.push(container);
+            }
         }
-        items = items.filter(item => !items.some(other => other !== item && item.contains(other)));
     }
     
-    // HANYA ambil chat yang memiliki indikator "Belum Dibaca" (titik merah/angka)
-    // Tidak ada pengecekan sekunder agar bot 100% standby dan tidak membuka chat lama yang sudah dibaca
-    return items.filter(item => {
-        // Shopee mungkin menggunakan class 'badge' atau 'shopee-badge' alih-alih 'unread'
-        return item.querySelector(".unread-badge, .unread-count, [class*='unread' i], [class*='badge' i]") !== null;
-    });
+    return items;
 }"""
 
 AUTO_REPLIES = {
@@ -484,8 +485,12 @@ async def setup_chat_view(page) -> bool:
 
     try:
         items_found = await page.evaluate(r'''() => {
-            const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
-            if (cells.length > 0) return true;
+            const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"], li');
+            if (cells.length > 0) {
+                for (let c of cells) {
+                    if (c.getBoundingClientRect().height > 20) return true;
+                }
+            }
             const divs = [...document.querySelectorAll('div')];
             return divs.some(div => {
                 const text = div.textContent || '';
@@ -493,10 +498,9 @@ async def setup_chat_view(page) -> bool:
                                      text.includes('Yesterday') || 
                                      text.includes('Kemarin') ||
                                      /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-                const isNotOrder = !text.toLowerCase().includes('total pesanan') && !text.toLowerCase().includes('kirim sebelum');
-                if (hasTimestamp && text.length < 300 && isNotOrder) {
+                if (hasTimestamp && text.length > 5 && text.length < 300) {
                     const rect = div.getBoundingClientRect();
-                    return rect.height > 40 && rect.height < 120 && rect.width > 100;
+                    return rect.height > 20 && rect.height < 150 && rect.width > 100;
                 }
                 return false;
             });
