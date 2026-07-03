@@ -192,7 +192,8 @@ GET_CHAT_ITEMS_JS = r"""() => {
     // HANYA ambil chat yang memiliki indikator "Belum Dibaca" (titik merah/angka)
     // Tidak ada pengecekan sekunder agar bot 100% standby dan tidak membuka chat lama yang sudah dibaca
     return items.filter(item => {
-        return item.querySelector(".unread-badge, .unread-count, [class*='unread']") !== null;
+        // Shopee mungkin menggunakan class 'badge' atau 'shopee-badge' alih-alih 'unread'
+        return item.querySelector(".unread-badge, .unread-count, [class*='unread' i], [class*='badge' i]") !== null;
     });
 }"""
 
