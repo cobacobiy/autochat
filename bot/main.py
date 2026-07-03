@@ -414,119 +414,87 @@ function isSeller(el, container) {
 
 
 async def setup_chat_view(page) -> bool:
+    """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
+    
+    # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
     try:
         reload_btn = page.locator("text=Klik untuk memuat ulang").first
         if await reload_btn.is_visible(timeout=1000):
-            log.info("Detected 'Klik untuk memuat ulang' error. Clicking to reload...")
+            log.info("Detected 'Klik untuk memuat ulang'. Reloading...")
             await reload_btn.click()
+            await page.wait_for_timeout(3000)
+            return False
+            
+        coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again')").first
+        if await coba_lagi_btn.is_visible(timeout=1000):
+            log.info("Detected 'Coba Lagi' error modal. Clicking...")
+            await coba_lagi_btn.click()
             await page.wait_for_timeout(3000)
             return False
     except Exception:
         pass
 
+    # 2. Handle Restore Popup
     try:
         restore_btn = page.locator("button:has-text('Restore'), button:has-text('Pulihkan')").first
         if await restore_btn.is_visible(timeout=1000):
-            log.info("Dismissing 'Restore pages?' dialog...")
             await restore_btn.click()
-            await page.wait_for_timeout(2000)
-    except Exception:
-        pass
-
-    try:
-        close_btn = page.locator("[aria-label='Close'], button:has-text('×'), .close-button").first
-        if await close_btn.is_visible(timeout=1000):
-            log.info("Closing restore pages pop-up via close button...")
-            await close_btn.click()
             await page.wait_for_timeout(1000)
     except Exception:
         pass
+        
+    try:
+        close_btn = page.locator("[aria-label='Close'], button:has-text('×'), .close-button").first
+        if await close_btn.is_visible(timeout=1000):
+            await close_btn.click()
+    except Exception:
+        pass
 
+    # 3. Cek jika daftar chat sudah terbuka (mendeteksi kotak chat / waktu)
+    try:
+        items_found = await page.evaluate(r'''() => {
+            const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"], li');
+            if (cells.length > 0) return true;
+            
+            const divs = [...document.querySelectorAll('div')];
+            return divs.some(div => {
+                const text = div.textContent || '';
+                return (/\b\d{2}:\d{2}\b/.test(text) || text.includes('Yesterday') || text.includes('Kemarin')) && text.length > 5 && text.length < 300;
+            });
+        }''')
+        
+        # Jika chat sudah tampil, KITA TIDAK PERLU KLIK APA-APA LAGI. Berhenti di sini (Standby Murni)
+        if items_found:
+            return True
+    except Exception:
+        pass
+
+    # 4. Jika belum tampil (misal baru login), buka tab Chat Pembeli
     try:
         trigger_penjual = page.locator("text=Chat Penjual").first
         trigger_pembeli = page.locator("text=Chat Pembeli").first
         if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
-            log.info("Detected 'Chat Penjual' active. Clicking to switch to 'Chat Pembeli'...")
+            log.info("Switching to 'Chat Pembeli'...")
             await trigger_penjual.click()
             await page.wait_for_timeout(1000)
-            option_pembeli = page.locator("text=Chat Pembeli").last
-            await option_pembeli.click()
+            await page.locator("text=Chat Pembeli").last.click()
             await page.wait_for_timeout(2000)
-    except Exception as e:
-        log.warning("Dropdown check/switch failed: %s", e)
+    except Exception:
+        pass
 
+    # 5. Pastikan tab Semua Chat dan Semua Pembeli diklik sekali (Hanya jalan jika belum terbuka)
     try:
-        semua_chat_tab = page.locator("text=Semua Chat").first
-        if await semua_chat_tab.is_visible():
-            log.info("Clicking 'Semua Chat' tab...")
-            await semua_chat_tab.click()
-            await page.wait_for_timeout(2000)
-            try:
-                semua_pembeli = page.locator("text=Semua Pembeli").first
-                if await semua_pembeli.is_visible():
-                    log.info("Clicking 'Semua Pembeli' tab after 'Semua Chat'...")
-                    await semua_pembeli.click()
-                    await page.wait_for_timeout(2000)
-            except Exception:
-                pass
-    except Exception as e:
-        log.warning("Clicking 'Semua Chat' tab failed: %s", e)
-
-    try:
-        items_found = await page.evaluate(r'''() => {
-            const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"], li');
-            if (cells.length > 0) {
-                for (let c of cells) {
-                    if (c.getBoundingClientRect().height > 20) return true;
-                }
-            }
-            const divs = [...document.querySelectorAll('div')];
-            return divs.some(div => {
-                const text = div.textContent || '';
-                const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || 
-                                     text.includes('Yesterday') || 
-                                     text.includes('Kemarin') ||
-                                     /\b\d{1,2}[/-]\d{1,2}\b/.test(text);
-                if (hasTimestamp && text.length > 5 && text.length < 300) {
-                    const rect = div.getBoundingClientRect();
-                    return rect.height > 20 && rect.height < 150 && rect.width > 100;
-                }
-                return false;
-            });
-        }''')
-        
-        if not items_found:
+        semua_chat = page.locator("text=Semua Chat").first
+        if await semua_chat.is_visible():
+            await semua_chat.click()
+            await page.wait_for_timeout(1000)
             semua_pembeli = page.locator("text=Semua Pembeli").first
             if await semua_pembeli.is_visible():
-                log.info("No chat items detected. Clicking 'Semua Pembeli' section to expand...")
                 await semua_pembeli.click()
-                await page.wait_for_timeout(2000)
-                
-    except Exception as e:
-        log.warning("Expanding sections failed: %s", e)
+                await page.wait_for_timeout(1000)
+    except Exception:
+        pass
         
-    try:
-        # Coba klik tombol Filter untuk mempercepat pencarian chat unread (mencegah chat tertumpuk di virtual scroll)
-        filter_btn = page.locator("button:has-text('Filter')").first
-        if await filter_btn.is_visible():
-            log.info("Mengklik tombol Filter...")
-            await filter_btn.click()
-            await page.wait_for_timeout(1000)
-            
-            # Cari opsi "Belum dibaca" atau "Belum dibalas"
-            belum_dibaca = page.locator("text=Belum dibaca, text=Belum Dibaca, text=Unread").first
-            if await belum_dibaca.is_visible():
-                log.info("Mengaktifkan filter 'Belum dibaca'...")
-                await belum_dibaca.click()
-                await page.wait_for_timeout(1500)
-            else:
-                belum_dibalas = page.locator("text=Belum dibalas, text=Belum Dibalas").first
-                if await belum_dibalas.is_visible():
-                    log.info("Mengaktifkan filter 'Belum dibalas'...")
-                    await belum_dibalas.click()
-                    await page.wait_for_timeout(1500)
-    except Exception as e:
-        log.warning("Gagal mengaktifkan filter unread: %s", e)
     return True
 
 async def read_riwayat_chat(page) -> str:
