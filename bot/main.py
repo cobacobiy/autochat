@@ -852,7 +852,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
         if not setup_success:
             return 0
 
-        visited_usernames = set()
         max_attempts = 30
         for attempt in range(max_attempts):
             try:
@@ -861,13 +860,11 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 
                 try:
                     elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
-                    num_items = await page.evaluate("arr => arr.length", elements_handle)
                 except Exception as e:
                     log.warning("Stale element reference, re-fetching: %s", e)
                     await page.wait_for_timeout(1000)
                     try:
                         elements_handle = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
-                        num_items = await page.evaluate("arr => arr.length", elements_handle)
                     except Exception as e2:
                         log.error("Failed to re-fetch chat items: %s", e2)
                         break
