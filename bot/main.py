@@ -906,11 +906,18 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                                 lines = [line.strip() for line in text.split('\n') if line.strip()]
                                 if lines:
                                     u_name = lines[0]
-                                    cache_key = f"{u_name}_{datetime.now().strftime('%Y-%m-%d')}"
-                                    if cache_key not in replied_cache:
+                                    # Gunakan teks preview sebagai bagian dari cache key agar jika ada pesan baru (preview berubah), bot merespons lagi.
+                                    preview_snippet = text.replace('\n', ' ')[:30]
+                                    cache_key_preview = f"PREV_{u_name}_{preview_snippet}"
+                                    cache_key_daily = f"{u_name}_{datetime.now().strftime('%Y-%m-%d')}"
+                                    
+                                    # Abaikan jika preview ini sudah diproses, ATAU jika hari ini sudah pernah dibalas
+                                    if cache_key_preview not in replied_cache and cache_key_daily not in replied_cache:
                                         target_item = item
                                         target_username = u_name
                                         target_index = idx
+                                        # Simpan cache_key_preview agar jika nanti di-skip, tidak loop berulang kali
+                                        target_cache_key_preview = cache_key_preview
                                         break
                     except Exception:
                         pass
@@ -918,6 +925,9 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 if not target_item:
                     # Tidak ada chat baru/unread di 2 daftar teratas, hentikan pengecekan
                     break
+                
+                # Simpan preview ini ke cache agar tidak diloop berulang kali jika ternyata di-skip
+                replied_cache[target_cache_key_preview] = time.time()
                 
                 item = target_item
                 username = target_username
