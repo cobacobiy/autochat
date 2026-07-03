@@ -500,9 +500,11 @@ async def setup_chat_view(page) -> bool:
     try:
         semua_chat = page.locator("text=Semua Chat").first
         if await semua_chat.is_visible():
-            await do_human_delay(page, 1500, 3500)
+            # Berikan jeda yang lebih lama di awal agar sistem keamanan Shopee tidak curiga
+            log.info("Menunggu UI termuat penuh (jeda 3-6 detik) sebelum setup tab...")
+            await do_human_delay(page, 3000, 6000)
             await semua_chat.click()
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(2000)
             semua_pembeli = page.locator("text=Semua Pembeli").first
             if await semua_pembeli.is_visible():
                 await do_human_delay(page, 1500, 3500)
@@ -851,6 +853,15 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
         max_attempts = 30
         for attempt in range(max_attempts):
             try:
+                # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
+                try:
+                    error_btn = page.locator("text=Coba Lagi").first
+                    if await error_btn.is_visible(timeout=500):
+                        log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
+                        return -1 # Return -1 to signal main loop to reload
+                except Exception:
+                    pass
+                
                 index = -1
                 username = "Unknown"
                 
@@ -1358,6 +1369,17 @@ async def run_bot():
     
                         # Scan and reply to unread chats directly on the live page
                         count = await handle_unread_chats(page, replied_cache)
+                        if count == -1:
+                            log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat!")
+                            try:
+                                await page.reload(wait_until="domcontentloaded")
+                                await page.wait_for_timeout(5000)
+                                global HAS_SETUP_TABS
+                                HAS_SETUP_TABS = False
+                            except Exception as e:
+                                log.error("Gagal reload: %s", e)
+                            continue
+                            
                         if count:
                             log.info("Processed %d chat(s) this cycle", count)
                         else:
