@@ -889,45 +889,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                                 break
                                 
                 if not target_item:
-                    # Scroll ke bawah untuk memuat lebih banyak chat (virtual scroll)
-                    scrolled = await page.evaluate('''() => {
-                        const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"]');
-                        if (cells.length > 0) {
-                            cells[cells.length - 1].scrollIntoView({block: 'nearest'});
-                            return true;
-                        }
-                        const lists = document.querySelectorAll('div');
-                        for (let div of lists) {
-                            if (div.scrollHeight > div.clientHeight && div.clientHeight > 200 && div.getBoundingClientRect().left < window.innerWidth * 0.4) {
-                                div.scrollBy(0, 300);
-                                return true;
-                            }
-                        }
-                        return false;
-                    }''')
-                    
-                    if scrolled:
-                        await page.wait_for_timeout(1000)
-                        # Jika setelah scroll masih tidak ada item baru yang bisa diproses, maka break
-                        # Kita cek dengan mengambil ulang item
-                        try:
-                            elements_handle_new = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
-                            num_items_new = await page.evaluate("arr => arr.length", elements_handle_new)
-                            found_new = False
-                            for i in range(num_items_new):
-                                item_handle_new = await page.evaluate_handle(f"(arr) => arr[{i}]", elements_handle_new)
-                                item_new = item_handle_new.as_element()
-                                if item_new:
-                                    text_new = await item_new.inner_text()
-                                    lines_new = [line.strip() for line in text_new.split('\n') if line.strip()]
-                                    if lines_new and lines_new[0] not in visited_usernames:
-                                        found_new = True
-                                        break
-                            if found_new:
-                                continue # Lanjut ke iterasi attempt berikutnya untuk memproses item baru ini
-                        except Exception:
-                            pass
-                            
+                    # Tidak ada chat baru di daftar teratas, hentikan pengecekan (tidak perlu scroll ke bawah)
                     break
                     
                 visited_usernames.add(target_username)
