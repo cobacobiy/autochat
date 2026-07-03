@@ -887,8 +887,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                # Cek 1 chat teratas saja (standby di paling atas sesuai permintaan user)
-                for idx in range(1):
+                # Cek 5 chat teratas
+                for idx in range(5):
                     try:
                         item_handle = await page.evaluate_handle(f"(arr) => arr.length > {idx} ? arr[{idx}] : null", elements_handle)
                         item = item_handle.as_element()
@@ -1251,8 +1251,16 @@ async def run_bot():
                 browser_start_time = time.time()
 
                 log.info("Navigating to Shopee Seller Chat…")
-                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                await page.wait_for_timeout(3000)
+                try:
+                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=60000)
+                    await page.wait_for_timeout(3000)
+                except Exception as goto_err:
+                    log.error("Gagal memuat halaman utama Shopee (timeout): %s. Restarting browser...", goto_err)
+                    try:
+                        await context.close()
+                    except:
+                        pass
+                    continue
 
                 # Check if already logged in
                 if "login" in page.url or "auth" in page.url:
