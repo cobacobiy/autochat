@@ -866,26 +866,44 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                global LAST_TOP_USERNAME
-                
-                # HANYA cek chat index 0 (paling atas)
-                item_handle = await page.evaluate_handle("(arr) => arr[0]", elements_handle)
-                item = item_handle.as_element()
-                if item:
-                    text = await item.inner_text()
-                    lines = [line.strip() for line in text.split('\n') if line.strip()]
-                    if lines:
-                        u_name = lines[0]
-                        
-                        # Cek apakah username ini BEDA dari username yang terakhir kita cek
-                        if LAST_TOP_USERNAME != u_name:
-                            target_item = item
-                            target_username = u_name
-                            target_index = 0
-                            LAST_TOP_USERNAME = u_name
+                # Cek 2 chat teratas
+                for idx in range(2):
+                    try:
+                        item_handle = await page.evaluate_handle(f"(arr) => arr.length > {idx} ? arr[{idx}] : null", elements_handle)
+                        item = item_handle.as_element()
+                        if item:
+                            text = await item.inner_text()
+                            has_unread = await item.query_selector(".unread-badge, .unread-count, [class*='unread']")
+                            has_ai = is_assistant_ai_msg(text)
                             
+                            # Cek apakah sudah dibalas (berdasarkan teks di preview)
+                            preview_lower = text.lower()
+                            already_replied = (
+                                "saya:" in preview_lower or 
+                                "anda:" in preview_lower or 
+                                "you:" in preview_lower or
+                                any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
+                                DEFAULT_REPLY.lower()[:15] in preview_lower or
+                                "gagal mengirim" in preview_lower or
+                                "tunggu balasan" in preview_lower
+                            )
+                            
+                            # Targetkan chat ini jika ada badge unread/AI, ATAU jika belum dibalas.
+                            if has_unread or has_ai or not already_replied:
+                                lines = [line.strip() for line in text.split('\n') if line.strip()]
+                                if lines:
+                                    u_name = lines[0]
+                                    cache_key = f"{u_name}_{datetime.now().strftime('%Y-%m-%d')}"
+                                    if cache_key not in replied_cache:
+                                        target_item = item
+                                        target_username = u_name
+                                        target_index = idx
+                                        break
+                    except Exception:
+                        pass
+                        
                 if not target_item:
-                    # Tidak ada chat baru di daftar teratas, hentikan pengecekan
+                    # Tidak ada chat baru/unread di 2 daftar teratas, hentikan pengecekan
                     break
                 
                 item = target_item
@@ -893,23 +911,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 index = target_index
                 item_text = await item.inner_text()
                 
-                has_unread = await item.query_selector(".unread-badge, .unread-count, [class*='unread']")
-                has_ai = is_assistant_ai_msg(item_text)
-                
-                if not has_unread and not has_ai:
-                    preview_lower = item_text.lower()
-                    if (
-                        "saya:" in preview_lower or 
-                        "anda:" in preview_lower or 
-                        "you:" in preview_lower or
-                        any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
-                        DEFAULT_REPLY.lower()[:15] in preview_lower or
-                        "gagal mengirim" in preview_lower or
-                        "tunggu balasan" in preview_lower
-                    ):
-                        log.info("Skipping chat #%d: already replied by seller or blocked by Shopee", index + 1)
-                        continue
-
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
                 
                 import random
