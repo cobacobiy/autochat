@@ -932,7 +932,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 except Exception:
                     pass
 
-                try:
+#                try:
 #                    history_btn_selectors = ["text=Lihat History Chat", "text=Lihat Pesan Sebelumnya", "button:has-text('History')", "button:has-text('Sebelumnya')"]
 #                    for sel in history_btn_selectors:
 #                        try:
