@@ -413,7 +413,10 @@ function isSeller(el, container) {
 
 
 
+HAS_SETUP_TABS = False
+
 async def setup_chat_view(page) -> bool:
+    global HAS_SETUP_TABS
     """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
     
     # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
@@ -423,6 +426,7 @@ async def setup_chat_view(page) -> bool:
             log.info("Detected 'Klik untuk memuat ulang'. Reloading...")
             await reload_btn.click()
             await page.wait_for_timeout(3000)
+            HAS_SETUP_TABS = False
             return False
             
         coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again')").first
@@ -430,6 +434,7 @@ async def setup_chat_view(page) -> bool:
             log.info("Detected 'Coba Lagi' error modal. Clicking...")
             await coba_lagi_btn.click()
             await page.wait_for_timeout(3000)
+            HAS_SETUP_TABS = False
             return False
     except Exception:
         pass
@@ -463,9 +468,12 @@ async def setup_chat_view(page) -> bool:
             });
         }''')
         
-        # Jika chat sudah tampil, KITA TIDAK PERLU KLIK APA-APA LAGI. Berhenti di sini (Standby Murni)
-        if items_found:
+        # Jika chat sudah tampil DAN tab-tab sudah disetup, kita berhenti di sini.
+        if items_found and HAS_SETUP_TABS:
             return True
+            
+        if not items_found:
+            HAS_SETUP_TABS = False
     except Exception:
         pass
 
@@ -495,6 +503,7 @@ async def setup_chat_view(page) -> bool:
     except Exception:
         pass
         
+    HAS_SETUP_TABS = True
     return True
 
 async def read_riwayat_chat(page) -> str:
