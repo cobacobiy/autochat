@@ -163,7 +163,7 @@ def reload_knowledge():
                 log.error("Gagal reload knowledge: %s", e)
 
 
-LAST_TOP_CHAT_STATE = None
+LAST_TOP_USERNAME = None
 
 GET_CHAT_ITEMS_JS = r"""() => {
     // Ambil elemen chat PERTAMA (paling atas) dari daftar sidebar kiri
@@ -872,7 +872,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                global LAST_TOP_CHAT_STATE
+                global LAST_TOP_USERNAME
                 
                 # HANYA cek chat index 0 (paling atas)
                 item_handle = await page.evaluate_handle("(arr) => arr[0]", elements_handle)
@@ -882,14 +882,13 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     lines = [line.strip() for line in text.split('\n') if line.strip()]
                     if lines:
                         u_name = lines[0]
-                        preview_text = text.strip()
                         
-                        # Cek apakah chat ini baru (nama atau pesannya beda dari yg terakhir dicek)
-                        if LAST_TOP_CHAT_STATE != (u_name, preview_text):
+                        # Cek apakah username ini BEDA dari username yang terakhir kita cek
+                        if LAST_TOP_USERNAME != u_name:
                             target_item = item
                             target_username = u_name
                             target_index = 0
-                            LAST_TOP_CHAT_STATE = (u_name, preview_text)
+                            LAST_TOP_USERNAME = u_name
                             
                 if not target_item:
                     # Tidak ada chat baru di daftar teratas, hentikan pengecekan
