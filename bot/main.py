@@ -1131,6 +1131,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
 
 
 async def run_bot():
+    global HAS_SETUP_TABS
     """Main daemon loop."""
     log.info("Starting Shopee Auto-Reply Bot")
     log.info("Profile directory: %s", PROFILE_DIR)
