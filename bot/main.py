@@ -434,8 +434,8 @@ async def setup_chat_view(page) -> bool:
             HAS_SETUP_TABS = False
             return False
             
-        html_content = await page.content()
-        if "Terjadi Kesalahan" in html_content and ("Coba Lagi" in html_content or "memuat halaman" in html_content):
+        html_content = (await page.content()).lower()
+        if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
             log.info("Detected 'Coba Lagi' error modal. Reloading page...")
             await page.reload(wait_until="domcontentloaded")
             await page.wait_for_timeout(5000)
@@ -855,8 +855,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
-                    html_content = await page.content()
-                    if "Terjadi Kesalahan" in html_content and ("Coba Lagi" in html_content or "memuat halaman" in html_content):
+                    html_content = (await page.content()).lower()
+                    if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
                         log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
                         return -1 # Return -1 to signal main loop to reload
                 except Exception:
@@ -1323,8 +1323,8 @@ async def run_bot():
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan")
                             try:
-                                html_content = await page.content()
-                                if "Terjadi Kesalahan" in html_content and ("Coba Lagi" in html_content or "memuat halaman" in html_content):
+                                html_content = (await page.content()).lower()
+                                if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
                                     log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Merefresh halaman...")
                                     await page.reload(wait_until="domcontentloaded")
                                     await page.wait_for_timeout(5000)
