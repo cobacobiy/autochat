@@ -436,8 +436,12 @@ async def setup_chat_view(page) -> bool:
             
         html_content = (await page.content()).lower()
         if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-            log.info("Detected 'Coba Lagi' error modal. Reloading page...")
-            await page.reload(wait_until="domcontentloaded")
+            log.info("Detected 'Coba Lagi' error modal. Reloading page via goto...")
+            try:
+                await page.goto("about:blank", timeout=10000)
+            except Exception:
+                pass
+            await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(5000)
             HAS_SETUP_TABS = False
             return False
@@ -667,7 +671,11 @@ async def read_riwayat_chat(page) -> str:
    except Exception as e:
        log.warning("Gagal membaca Riwayat Chat (terjadi crash/error): %s. Merefresh halaman...", e)
        try:
-           await page.reload(wait_until="domcontentloaded")
+           await page.goto("about:blank", timeout=10000)
+       except Exception:
+           pass
+       try:
+           await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
            await page.wait_for_timeout(5000)
        except Exception:
            pass
@@ -879,8 +887,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                # Cek 5 chat teratas
-                for idx in range(5):
+                # Cek 1 chat teratas saja (standby di paling atas sesuai permintaan user)
+                for idx in range(1):
                     try:
                         item_handle = await page.evaluate_handle(f"(arr) => arr.length > {idx} ? arr[{idx}] : null", elements_handle)
                         item = item_handle.as_element()
@@ -1325,8 +1333,12 @@ async def run_bot():
                             try:
                                 html_content = (await page.content()).lower()
                                 if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Merefresh halaman...")
-                                    await page.reload(wait_until="domcontentloaded")
+                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Mengetik ulang alamat web...")
+                                    try:
+                                        await page.goto("about:blank", timeout=10000)
+                                    except Exception:
+                                        pass
+                                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
                                     await page.wait_for_timeout(5000)
                                     has_crash_text = True
                             except Exception:
@@ -1381,7 +1393,11 @@ async def run_bot():
                         if count == -1:
                             log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat!")
                             try:
-                                await page.reload(wait_until="domcontentloaded")
+                                await page.goto("about:blank", timeout=10000)
+                            except Exception:
+                                pass
+                            try:
+                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
                                 await page.wait_for_timeout(5000)
                                 HAS_SETUP_TABS = False
                             except Exception as e:
@@ -1443,7 +1459,11 @@ async def run_bot():
                 # Try reloading the page on other non-fatal errors to recover state
                 try:
                     log.info("Attempting page reload to recover...")
-                    await page.reload(wait_until="domcontentloaded")
+                    try:
+                        await page.goto("about:blank", timeout=10000)
+                    except Exception:
+                        pass
+                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
                     await page.wait_for_timeout(3000)
                 except Exception as reload_exc:
                     log.error("Failed to reload page: %s", reload_exc)
