@@ -17,8 +17,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import httpx
 
 from playwright.async_api import async_playwright, Page
-from playwright_stealth import Stealth
-
 # ── Logging & Directory setup ──────────────────────────────────────────────────
 LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
