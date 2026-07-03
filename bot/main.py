@@ -907,13 +907,15 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     pass
 
                 try:
-                    # Gunakan force=True agar Playwright mengabaikan overlay transparan
-                    await item.click(force=True, timeout=3000)
+                    # Hindari force=True karena itu memicu deteksi bot Shopee (klik tidak wajar).
+                    # Kita klik spesifik di bagian teks/avatar agar tidak memicu tombol menu (tiga titik).
+                    target = item.locator("span, [class*='name']").first
+                    await target.click(timeout=3000)
                 except Exception as e:
-                    log.warning("Gagal mengklik chat: %s", e)
+                    log.warning("Gagal mengklik chat secara normal: %s", e)
                     try:
-                        # Fallback: coba klik elemen teks di dalam chat tersebut
-                        await item.locator("span").first.click(force=True, timeout=2000)
+                        # Fallback: coba klik keseluruhan area item (secara natural)
+                        await item.click(timeout=2000)
                     except Exception:
                         pass
                 await page.wait_for_timeout(2000)
