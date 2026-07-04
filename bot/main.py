@@ -918,8 +918,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 target_item = None
                 target_username = None
                 target_index = -1
-                # Cek 1 chat teratas saja (standby di paling atas sesuai permintaan user) agar tidak dicurigai bot
-                for idx in range(1):
+                # Cek 20 chat teratas, tapi dengan aturan ketat agar tidak dicurigai bot
+                for idx in range(20):
                     try:
                         item_handle = await page.evaluate_handle(f"(arr) => arr.length > {idx} ? arr[{idx}] : null", elements_handle)
                         item = item_handle.as_element()
@@ -940,8 +940,10 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                                 "tunggu balasan" in preview_lower
                             )
                             
-                            # Targetkan chat ini jika ada badge unread/AI, ATAU jika belum dibalas.
-                            if has_unread or has_ai or not already_replied:
+                            # Targetkan chat ini JIKA:
+                            # 1. Chat Asisten AI Toko (bisa di urutan berapapun karena sering nyangkut)
+                            # 2. ATAU Chat biasa, TAPI harus di urutan paling atas (standby layaknya manusia)
+                            if has_ai or (idx == 0 and (has_unread or not already_replied)):
                                 lines = [line.strip() for line in text.split('\n') if line.strip()]
                                 if lines:
                                     u_name = lines[0]
