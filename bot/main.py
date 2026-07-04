@@ -424,8 +424,20 @@ async def setup_chat_view(page) -> bool:
     global HAS_SETUP_TABS
     """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
     
-    # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
+    # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi / Captcha)
     try:
+        # Cek Captcha terlebih dahulu agar reload instan
+        captcha_modal = await page.query_selector("#sfu-captcha-modal")
+        if captcha_modal and await captcha_modal.is_visible():
+            log.warning("🚨 CAPTCHA terdeteksi di setup_chat_view! Reloading page directly...")
+            try:
+                await page.reload(wait_until="domcontentloaded", timeout=15000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(3000)
+            HAS_SETUP_TABS = False
+            return False
+
         reload_btn = page.locator("text=Klik untuk memuat ulang").first
         if await reload_btn.is_visible(timeout=1000):
             log.info("Detected 'Klik untuk memuat ulang'. Reloading...")
@@ -891,8 +903,14 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
         max_attempts = 30
         for attempt in range(max_attempts):
             try:
-                # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
+                # Cek jika ada popup error / Captcha Shopee menutupi layar agar tidak stuck
                 try:
+                    # Cek Captcha
+                    captcha_modal = await page.query_selector("#sfu-captcha-modal")
+                    if captcha_modal and await captcha_modal.is_visible():
+                        log.warning("🚨 CAPTCHA terdeteksi sebelum membaca chat! Membatalkan sesi ini untuk force reload...")
+                        return -1
+
                     coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
                     if await coba_lagi_btn.is_visible(timeout=1000):
                         log.warning("🚨 Popup 'Coba Lagi' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
