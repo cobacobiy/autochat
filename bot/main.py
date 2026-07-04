@@ -1391,10 +1391,14 @@ async def run_bot():
                                 pass
                             
                             if (is_blank and "login" not in page.url and "auth" not in page.url) or has_crash_text:
-                                log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Menunggu jeda manusiawi sebelum reload...")
+                                log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Menunggu jeda manusiawi sebelum navigasi ulang...")
                                 await do_human_delay(page, 3000, 7000)
                                 try:
-                                    await page.reload(wait_until="domcontentloaded", timeout=30000)
+                                    # Navigasi ke beranda seller centre dulu untuk mereset state Shopee Webchat
+                                    await page.goto("https://seller.shopee.co.id/", wait_until="domcontentloaded", timeout=30000)
+                                    await page.wait_for_timeout(3000)
+                                    # Kembali ke halaman chat
+                                    await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
                                     await page.wait_for_timeout(5000)
                                     HAS_SETUP_TABS = False
                                 except Exception as reload_err:
