@@ -980,6 +980,20 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 log.info("Jeda sejenak %d ms layaknya manusia sebelum klik chat agar tidak dicurigai bot...", human_delay)
                 await page.wait_for_timeout(human_delay)
                 
+                # Re-fetch item to prevent "Element is not attached to the DOM" after delay
+                try:
+                    elements_handle_fresh = await page.evaluate_handle(GET_CHAT_ITEMS_JS)
+                    item_handle_fresh = await page.evaluate_handle(f"(arr) => arr.length > {index} ? arr[{index}] : null", elements_handle_fresh)
+                    item_fresh = item_handle_fresh.as_element()
+                    if item_fresh:
+                        item = item_fresh
+                    else:
+                        log.warning("Item chat menghilang dari DOM setelah jeda. Skip cycle ini.")
+                        continue
+                except Exception as e:
+                    log.warning("Gagal mengambil ulang elemen chat setelah jeda: %s", e)
+                    continue
+                
                 try:
                     await page.evaluate(r'''() => {
                         document.querySelectorAll('div[role="dialog"]').forEach(d => {
