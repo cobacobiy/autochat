@@ -1426,18 +1426,7 @@ async def run_bot():
                                     pass
                                 continue
     
-                        # Scheduled page reload every 30 minutes to prevent memory leak / Aw Snap (Error 9)
-                        if time.time() - last_refresh_time > 1800:
-                            log.info("Performing scheduled page reload to prevent memory leak...")
-                            try:
-                                await page.goto("about:blank", wait_until="domcontentloaded")
-                                await page.wait_for_timeout(1000)
-                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
-                                await page.wait_for_timeout(3000)
-                                last_refresh_time = time.time()
-                                HAS_SETUP_TABS = False
-                            except Exception as reload_err:
-                                log.error("Scheduled reload failed: %s", reload_err)
+                        # Scheduled page reload has been removed by user request
     
                         # Scan and reply to unread chats directly on the live page
                         count = await handle_unread_chats(page, replied_cache)
