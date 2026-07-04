@@ -513,21 +513,27 @@ async def setup_chat_view(page) -> bool:
     # 5. Pastikan tab Semua Chat dan Semua Pembeli diklik sekali (Hanya jalan jika belum terbuka)
     try:
         semua_chat = page.locator("text=Semua Chat").first
-        if await semua_chat.is_visible():
+        # Tunggu sampai "Semua Chat" visible agar tidak terlewat setelah reload
+        await semua_chat.wait_for(state="visible", timeout=10000)
+        
+        if not HAS_SETUP_TABS:
             # Berikan jeda yang lebih lama di awal agar sistem keamanan Shopee tidak curiga
             log.info("Menunggu UI termuat penuh (jeda 3-6 detik) sebelum setup tab...")
             await do_human_delay(page, 3000, 6000)
             await semua_chat.click()
             await page.wait_for_timeout(2000)
+            
             semua_pembeli = page.locator("text=Semua Pembeli").first
             if await semua_pembeli.is_visible():
                 await do_human_delay(page, 1500, 3500)
                 await semua_pembeli.click()
                 await page.wait_for_timeout(1000)
-    except Exception:
-        pass
+            HAS_SETUP_TABS = True
+    except Exception as e:
+        log.warning("Gagal setup tab Semua Chat/Semua Pembeli: %s", e)
+        # Jangan set HAS_SETUP_TABS = True agar di iterasi berikutnya dicoba lagi
+        return False
         
-    HAS_SETUP_TABS = True
     return True
 
 async def read_riwayat_chat(page) -> str:
@@ -1391,6 +1397,7 @@ async def run_bot():
                                 try:
                                     await page.reload(wait_until="domcontentloaded", timeout=30000)
                                     await page.wait_for_timeout(5000)
+                                    HAS_SETUP_TABS = False
                                 except Exception as reload_err:
                                     log.error("Gagal saat mencoba force reload halaman blank: %s", reload_err)
                                 continue # Lanjut iterasi baru agar tidak mengeksekusi handle_unread_chats di DOM yang kosong
@@ -1425,6 +1432,7 @@ async def run_bot():
                                 await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
                                 await page.wait_for_timeout(3000)
                                 last_refresh_time = time.time()
+                                HAS_SETUP_TABS = False
                             except Exception as reload_err:
                                 log.error("Scheduled reload failed: %s", reload_err)
     
