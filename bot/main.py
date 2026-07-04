@@ -424,20 +424,8 @@ async def setup_chat_view(page) -> bool:
     global HAS_SETUP_TABS
     """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
     
-    # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi / Captcha)
+    # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
     try:
-        # Cek Captcha terlebih dahulu agar reload instan
-        captcha_modal = await page.query_selector("#sfu-captcha-modal")
-        if captcha_modal and await captcha_modal.is_visible():
-            log.warning("🚨 CAPTCHA terdeteksi di setup_chat_view! Reloading page directly...")
-            try:
-                await page.reload(wait_until="domcontentloaded", timeout=15000)
-            except Exception:
-                pass
-            await page.wait_for_timeout(3000)
-            HAS_SETUP_TABS = False
-            return False
-
         reload_btn = page.locator("text=Klik untuk memuat ulang").first
         if await reload_btn.is_visible(timeout=1000):
             log.info("Detected 'Klik untuk memuat ulang'. Reloading...")
@@ -834,19 +822,11 @@ async def send_reply(page, reply_text: str, username: str) -> bool:
 
     log.info("Found input box via: %s", input_sel_used)
     
-    # Cek apakah ada Captcha yang menutupi layar
-    captcha_modal = await page.query_selector("#sfu-captcha-modal")
-    if captcha_modal:
-        is_visible = await captcha_modal.is_visible()
-        if is_visible:
-            log.warning("🚨 CAPTCHA terdeteksi menutupi layar! Mereload halaman...")
-            return -1
-
     try:
         await input_box.click(timeout=5000)
     except Exception as e:
-        log.warning("Gagal mengklik kotak input (mungkin terhalang elemen lain): %s", e)
-        return False
+        log.warning("Gagal mengklik kotak input (mungkin terhalang elemen lain / CAPTCHA): %s. Memicu reload...", e)
+        return -1
 
     await page.wait_for_timeout(300)
 
@@ -903,14 +883,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
         max_attempts = 30
         for attempt in range(max_attempts):
             try:
-                # Cek jika ada popup error / Captcha Shopee menutupi layar agar tidak stuck
+                # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
-                    # Cek Captcha
-                    captcha_modal = await page.query_selector("#sfu-captcha-modal")
-                    if captcha_modal and await captcha_modal.is_visible():
-                        log.warning("🚨 CAPTCHA terdeteksi sebelum membaca chat! Membatalkan sesi ini untuk force reload...")
-                        return -1
-
                     coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
                     if await coba_lagi_btn.is_visible(timeout=1000):
                         log.warning("🚨 Popup 'Coba Lagi' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
@@ -1020,12 +994,13 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     else:
                         await item.click(timeout=3000)
                 except Exception as e:
-                    log.warning("Gagal mengklik chat secara normal: %s", e)
+                    log.warning("Gagal mengklik chat secara normal: %s. Mencoba fallback...", e)
                     try:
                         # Fallback: coba klik keseluruhan area item (secara natural)
                         await item.click(timeout=2000)
-                    except Exception:
-                        pass
+                    except Exception as fallback_err:
+                        log.error("Gagal mengklik chat dengan fallback (mungkin terhalang CAPTCHA): %s. Memicu reload...", fallback_err)
+                        return -1
                 await page.wait_for_timeout(2000)
 
                 try:
