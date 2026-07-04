@@ -232,7 +232,7 @@ async def get_ai_reply(buyer_message: str) -> str:
     
     for attempt in range(2):
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=120) as client:
                 if AI_PROVIDER == "gemini":
                     if not GEMINI_API_KEY:
                         log.error("GEMINI_API_KEY is not set!")
@@ -301,7 +301,7 @@ async def get_ai_reply(buyer_message: str) -> str:
                         log.warning("Ollama attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
                         
         except Exception as e:
-            log.warning("%s attempt %d error: %s", AI_PROVIDER.capitalize(), attempt + 1, e)
+            log.warning("%s attempt %d error: %s", AI_PROVIDER.capitalize(), attempt + 1, repr(e))
         
         if attempt < 1:
             await asyncio.sleep(2)
