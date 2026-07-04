@@ -428,7 +428,8 @@ async def setup_chat_view(page) -> bool:
     try:
         reload_btn = page.locator("text=Klik untuk memuat ulang").first
         if await reload_btn.is_visible(timeout=1000):
-            log.info("Detected 'Klik untuk memuat ulang'. Reloading...")
+            log.info("Detected 'Klik untuk memuat ulang'. Menunggu jeda manusiawi sebelum reload...")
+            await do_human_delay(page, 3000, 7000)
             await reload_btn.click()
             await page.wait_for_timeout(3000)
             HAS_SETUP_TABS = False
@@ -436,7 +437,8 @@ async def setup_chat_view(page) -> bool:
             
         coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
         if await coba_lagi_btn.is_visible(timeout=1000):
-            log.info("Detected 'Coba Lagi' error modal. Reloading page directly...")
+            log.info("Detected 'Coba Lagi' error modal. Menunggu jeda manusiawi sebelum reload...")
+            await do_human_delay(page, 3000, 7000)
             try:
                 await page.reload(wait_until="domcontentloaded", timeout=30000)
             except Exception:
@@ -447,7 +449,8 @@ async def setup_chat_view(page) -> bool:
 
         html_content = (await page.content()).lower()
         if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-            log.info("Detected 'Coba Lagi' error modal from HTML content. Reloading page directly...")
+            log.info("Detected 'Coba Lagi' error modal from HTML content. Menunggu jeda manusiawi sebelum reload...")
+            await do_human_delay(page, 3000, 7000)
             try:
                 await page.reload(wait_until="domcontentloaded", timeout=30000)
             except Exception:
@@ -825,7 +828,8 @@ async def send_reply(page, reply_text: str, username: str) -> bool:
     try:
         await input_box.click(timeout=5000)
     except Exception as e:
-        log.warning("Gagal mengklik kotak input (mungkin terhalang elemen lain / CAPTCHA): %s. Memicu reload...", e)
+        log.warning("Gagal mengklik kotak input (mungkin terhalang elemen lain / CAPTCHA): %s. Menunggu jeda manusiawi sebelum reload...", e)
+        await do_human_delay(page, 3000, 7000)
         return -1
 
     await page.wait_for_timeout(300)
@@ -999,7 +1003,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                         # Fallback: coba klik keseluruhan area item (secara natural)
                         await item.click(timeout=2000)
                     except Exception as fallback_err:
-                        log.error("Gagal mengklik chat dengan fallback (mungkin terhalang CAPTCHA): %s. Memicu reload...", fallback_err)
+                        log.error("Gagal mengklik chat dengan fallback (mungkin terhalang CAPTCHA): %s. Menunggu jeda manusiawi sebelum reload...", fallback_err)
+                        await do_human_delay(page, 3000, 7000)
                         return -1
                 await page.wait_for_timeout(2000)
 
@@ -1386,7 +1391,8 @@ async def run_bot():
                                 pass
                             
                             if (is_blank and "login" not in page.url and "auth" not in page.url) or has_crash_text:
-                                log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Melakukan force reload...")
+                                log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Menunggu jeda manusiawi sebelum reload...")
+                                await do_human_delay(page, 3000, 7000)
                                 try:
                                     await page.reload(wait_until="domcontentloaded", timeout=30000)
                                     await page.wait_for_timeout(5000)
@@ -1432,7 +1438,8 @@ async def run_bot():
                         # Scan and reply to unread chats directly on the live page
                         count = await handle_unread_chats(page, replied_cache)
                         if count == -1:
-                            log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat!")
+                            log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat! Menunggu jeda manusiawi...")
+                            await do_human_delay(page, 3000, 7000)
                             try:
                                 await page.reload(wait_until="domcontentloaded", timeout=30000)
                                 await page.wait_for_timeout(5000)
