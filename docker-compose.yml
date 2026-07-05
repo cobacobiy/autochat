@@ -17,7 +17,7 @@ services:
       - HEADLESS=false
       - PROFILE_DIR=/data/shopee-profile
       - POLL_INTERVAL=5           # seconds between chat poll cycles
-      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_URL=http://ollama:11434
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_PROVIDER=${AI_PROVIDER:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
@@ -48,8 +48,31 @@ services:
         limits:
           memory: 2g
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull qwen2.5:1.5b" ]
 
 volumes:
   shopee-bot-profile:
   shopee-bot-logs:
+  ollama-data:
 
