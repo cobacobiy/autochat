@@ -21,7 +21,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_PROVIDER=${AI_PROVIDER:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
-      - OLLAMA_MODEL=qwen2
+      - OLLAMA_MODEL=qwen2.5:3b
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
 
