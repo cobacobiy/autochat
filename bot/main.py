@@ -223,7 +223,7 @@ def build_system_prompt() -> str:
         "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Pembeli saat checkout ya kak 😊\"\n"
         "3. Jika pembeli meminta dikirim cepat (buru-buru/kapan dikirim), jawab: \"Pesanan kakak akan segera kami proses dan kirimkan sesuai antrean ya kak, mohon ditunggu 😊\"\n"
         "4. Gunakan akal sehat ala CS manusia. Jika ada sapaan atau obrolan santai, balaslah dengan ramah.\n"
-        "5. Jika ada pertanyaan spesifik tentang detail teknis yang benar-benar tidak Anda ketahui dan tidak ada di panduan, barulah Anda boleh meminta maaf dan sampaikan bahwa Anda akan meneruskannya ke admin toko. Jangan pernah mengarang spesifikasi atau harga.\n"
+        "5. Jika pembeli menanyakan detail spesifik suatu produk (seperti jumlah isi, ukuran, dll) yang benar-benar TIDAK ADA di panduan, Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU (tanpa tambahan apapun). Jangan pernah menebak atau mengarang spesifikasi.\n"
         "6. Jawab sesingkat dan se-natural mungkin, tidak perlu kaku."
     )
 
