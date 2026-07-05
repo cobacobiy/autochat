@@ -21,7 +21,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_PROVIDER=${AI_PROVIDER:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
-      - OLLAMA_MODEL=qwen2.5:3b
+      - OLLAMA_MODEL=qwen2
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
 
@@ -69,7 +69,7 @@ services:
       - ollama
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull qwen2.5:3b" ]
+    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull qwen2" ]
 
 volumes:
   shopee-bot-profile:
