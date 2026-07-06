@@ -24,6 +24,7 @@ services:
       - OLLAMA_MODEL=qwen2.5:3b
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
+      - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
 
     volumes:
       # Persist Chromium session so login survives container restarts

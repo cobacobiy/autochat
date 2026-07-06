@@ -67,7 +67,7 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
 
 # ── Safety / Limit Configuration ──────────────────────────────────────────────
 UNANSWERED_PATH = os.getenv("UNANSWERED_PATH", "/app/unanswered_questions.txt")
-MAX_DAILY_REPLIES = int(os.getenv("MAX_DAILY_REPLIES", "500"))
+MAX_DAILY_REPLIES = int(os.getenv("MAX_DAILY_REPLIES", "5000"))
 MAX_CACHE_SIZE = int(os.getenv("MAX_CACHE_SIZE", "1000"))
 
 DAILY_REPLY_DATE = ""
@@ -118,7 +118,7 @@ paths_to_try = [
 ]
 
 for p_path in paths_to_try:
-    if os.path.exists(p_path):
+    if os.path.isfile(p_path):
         try:
             with open(p_path, "r", encoding="utf-8") as f:
                 STORE_KNOWLEDGE = f.read().strip()
@@ -147,7 +147,7 @@ def reload_knowledge():
     """Reload STORE_KNOWLEDGE if the file content changes."""
     global STORE_KNOWLEDGE, KNOWLEDGE_PATH
     for p_path in paths_to_try:
-        if os.path.exists(p_path):
+        if os.path.isfile(p_path):
             try:
                 with open(p_path, "r", encoding="utf-8") as f:
                     new_content = f.read().strip()
