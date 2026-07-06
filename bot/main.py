@@ -1348,17 +1348,24 @@ async def run_bot():
                     for _ in range(120): # 120 * 5s = 600s = 10 minutes
                         if shutdown_event.is_set():
                             break
-                        await page.wait_for_timeout(5000)
-                        # Check if we are logged in now
-                        if "login" not in page.url and "auth" not in page.url:
-                            log.info("Login detected! Starting polling loop...")
-                            login_detected = True
-                            await page.wait_for_timeout(3000)
+                        try:
+                            await page.wait_for_timeout(5000)
+                            # Check if we are logged in now
+                            if "login" not in page.url and "auth" not in page.url:
+                                log.info("Login detected! Starting polling loop...")
+                                login_detected = True
+                                await page.wait_for_timeout(3000)
+                                break
+                        except Exception as e:
+                            log.warning("Connection lost or browser closed during login check: %s", e)
                             break
                     
                     if not login_detected:
                         log.info("Closing persistent Chromium context...")
-                        await context.close()
+                        try:
+                            await context.close()
+                        except Exception:
+                            pass
                         break
 
                 log.info("Logged in — entering polling loop (every %ds)", POLL_INTERVAL_SECONDS)
