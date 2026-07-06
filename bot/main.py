@@ -223,8 +223,22 @@ def build_system_prompt() -> str:
         "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Pembeli saat checkout ya kak 😊\"\n"
         "3. Jika pembeli meminta dikirim cepat (buru-buru/kapan dikirim), jawab: \"Pesanan kakak akan segera kami proses dan kirimkan sesuai antrean ya kak, mohon ditunggu 😊\"\n"
         "4. Gunakan akal sehat ala CS manusia. Jika ada sapaan atau obrolan santai, balaslah dengan ramah.\n"
-        "5. Jika pembeli menanyakan detail spesifik suatu produk (seperti jumlah isi, ukuran, dll) yang benar-benar TIDAK ADA di panduan, Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU (tanpa tambahan apapun). Jangan pernah menebak atau mengarang spesifikasi.\n"
-        "6. Jawab sesingkat dan se-natural mungkin, tidak perlu kaku."
+        "5. Jika pembeli menanyakan detail spesifik produk, mengajukan komplain pesanan kurang/salah kirim, meminta pengembalian dana (refund), atau hal lain yang benar-benar TIDAK ADA solusinya di [KNOWLEDGE BASE], Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU (tanpa ada teks atau kalimat tambahan apa pun).\n"
+        "6. Jawab sesingkat dan se-natural mungkin, tidak perlu kaku.\n\n"
+        "=== CONTOH CARA MENJAWAB ===\n"
+        "Contoh 1 (Komplain barang kurang / salah kirim):\n"
+        "Pembeli: \"Pesen isi 50pcs kok dikirim 10pcs\"\n"
+        "Jawaban: TIDAK TAHU\n\n"
+        "Contoh 2 (Meminta refund / retur):\n"
+        "Pembeli: \"Kirim kurangnya atau pengembalian dana aja\"\n"
+        "Jawaban: TIDAK TAHU\n\n"
+        "Contoh 3 (Tanya spesifikasi tidak ada di Knowledge Base):\n"
+        "Pembeli: \"Apakah sampul mika ini anti air dan tebal?\"\n"
+        "Jawaban: TIDAK TAHU\n\n"
+        "Contoh 4 (Tanya hal yang ada di Knowledge Base):\n"
+        "Pembeli: \"Bisa COD ga kak?\"\n"
+        "Jawaban: \"Bisa kak, kita suda aktifkan semua COD, jika lom bisa coba pakai akun lain ya kak\"\n"
+        "============================="
     )
 
 async def get_ai_reply(buyer_message: str) -> str:
@@ -351,44 +365,44 @@ def is_assistant_ai_msg(text: str) -> bool:
 
 IS_SELLER_JS = r"""
 function isSeller(el, container) {
-    const dataCy = el.getAttribute('data-cy') || '';
-    if (dataCy.includes('send') || dataCy.includes('seller') || dataCy.includes('to-user')) return true;
-    if (dataCy === 'webchat-message-receive') return false;
-    
-    const className = (el.className || '').toLowerCase();
-    if (className.includes('send') || className.includes('seller') || 
-        className.includes('self') || className.includes('right')) return true;
-    
     let current = el;
     for (let depth = 0; depth < 15; depth++) {
         if (!current) break;
-        const style = window.getComputedStyle(current);
-        if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || style.alignItems === 'flex-end' || style.flexDirection === 'row-reverse') return true;
         
-        const parentClass = (current.parentElement ? current.parentElement.className : '') || '';
-        if (typeof parentClass === 'string') {
-            const lowerParentClass = parentClass.toLowerCase();
-            if (lowerParentClass.includes('send') || lowerParentClass.includes('seller') || lowerParentClass.includes('self') || lowerParentClass.includes('right')) {
-                return true;
-            }
-        }
+        // 1. Periksa data-cy
+        const dataCy = current.getAttribute('data-cy') || '';
+        if (dataCy.includes('send') || dataCy.includes('seller') || dataCy.includes('to-user')) return true;
+        if (dataCy.includes('receive') || dataCy.includes('buyer') || dataCy === 'webchat-message-receive') return false;
+        
+        // 2. Periksa nama class
+        const className = (current.className || '').toString().toLowerCase();
+        if (className.includes('send') || className.includes('seller') || 
+            className.includes('self') || className.includes('right')) return true;
+        if (className.includes('receive') || className.includes('buyer') || className.includes('left')) return false;
+
+        // 3. Periksa CSS alignment (align-self, justify-content, dsb.)
+        const style = window.getComputedStyle(current);
+        if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || 
+            style.alignItems === 'flex-end' || style.flexDirection === 'row-reverse' ||
+            style.alignSelf === 'flex-end' || style.justifySelf === 'end') return true;
+        
         current = current.parentElement;
     }
     
-    if (container) {
+    // Fallback berdasarkan posisi relatif terhadap kontainer
+    if (container && container !== document.body) {
         const cRect = container.getBoundingClientRect();
         const bRect = el.getBoundingClientRect();
         if (cRect.width > 0) {
             const relLeft = (bRect.left - cRect.left) / cRect.width;
-            const relRight = (cRect.right - bRect.right) / cRect.width;
             const bubbleCenter = bRect.left + (bRect.width / 2);
             const containerCenter = cRect.left + (cRect.width / 2);
-            
-            if (relLeft > 0.4 || (relRight < 0.1 && relLeft > 0.1) || bubbleCenter > containerCenter + 10) return true;
+            if (relLeft > 0.4 || bubbleCenter > containerCenter + 10) return true;
             if (bubbleCenter < containerCenter - 10) return false;
         }
     }
     
+    // Fallback berdasarkan warna background
     const bubbleStyle = window.getComputedStyle(el);
     const bgColor = bubbleStyle.backgroundColor || '';
     if (bgColor && (
@@ -410,9 +424,7 @@ function isSeller(el, container) {
 }
 """
 
-
-
-
+SENT_MESSAGES = {}
 HAS_SETUP_TABS = False
 
 async def do_human_delay(page, min_ms=2000, max_ms=4500):
@@ -1062,6 +1074,8 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     for ans in STORE_KNOWLEDGE_ANSWERS:
                         if len(ans) > 10 and ans.lower()[:30] in msg_lower:
                             msg["isSeller"] = True
+                    if username in SENT_MESSAGES and msg_lower in SENT_MESSAGES[username]:
+                        msg["isSeller"] = True
 
                 chat_history = chat_history[-4:]
                 last_msg = chat_history[-1]
@@ -1187,6 +1201,10 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 if reply_status == -1:
                     return -1
                 elif reply_status:
+                    if username not in SENT_MESSAGES:
+                        SENT_MESSAGES[username] = set()
+                    SENT_MESSAGES[username].add(reply_text.strip().lower())
+                    
                     replied_cache[cache_key] = time.time()
                     DAILY_REPLY_COUNTER += 1
                     DAILY_AI_REPLIED_COUNT += 1
