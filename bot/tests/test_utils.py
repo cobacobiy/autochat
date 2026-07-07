@@ -1,4 +1,5 @@
-from bot.main import _clean_ai_reply, get_auto_reply, is_assistant_ai_msg
+from bot.ai_engine import _clean_ai_reply, get_auto_reply
+from bot.utils import is_assistant_ai_msg
 
 def test_clean_ai_reply():
     assert _clean_ai_reply("J: Ini jawabannya") == "Ini jawabannya"
