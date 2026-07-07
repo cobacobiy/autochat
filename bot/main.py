@@ -17,8 +17,25 @@ import subprocess
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import httpx
+from dataclasses import dataclass, field
+from typing import Dict, Set
+
 
 from playwright.async_api import async_playwright, Page
+
+@dataclass
+class BotState:
+    daily_reply_date: str = ""
+    daily_reply_counter: int = 0
+    daily_skip_count: int = 0
+    daily_unanswered_count: int = 0
+    daily_ai_replied_count: int = 0
+    has_setup_tabs: bool = False
+    replied_cache: Dict[str, float] = field(default_factory=dict)
+    sent_messages: Dict[str, Set[str]] = field(default_factory=dict)
+
+bot_state = BotState()
+
 # ── Logging & Directory setup ──────────────────────────────────────────────────
 LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -82,13 +99,7 @@ for fpath in [UNANSWERED_PATH, os.getenv("KNOWLEDGE_PATH", "/app/store_knowledge
         with open(fpath, "w") as f:
             f.write("")
 
-DAILY_REPLY_DATE = ""
-DAILY_REPLY_COUNTER = 0
-DAILY_SKIP_COUNT = 0
-DAILY_UNANSWERED_COUNT = 0
-DAILY_AI_REPLIED_COUNT = 0
 BOT_START_TIME = time.time()
-REPLIED_CACHE = {}
 
 def cleanup_old_screenshots(log_dir, hours=24):
     try:
@@ -111,11 +122,11 @@ class HealthHandler(BaseHTTPRequestHandler):
             "ai_model": OLLAMA_MODEL if AI_PROVIDER == "ollama" else GEMINI_MODEL,
             "knowledge_loaded": bool(STORE_KNOWLEDGE),
             "knowledge_entries": len(STORE_KNOWLEDGE_ANSWERS),
-            "daily_replies": DAILY_REPLY_COUNTER,
-            "daily_skips": DAILY_SKIP_COUNT,
-            "daily_unanswered": DAILY_UNANSWERED_COUNT,
-            "daily_ai_replied": DAILY_AI_REPLIED_COUNT,
-            "cache_size": len(REPLIED_CACHE),
+            "daily_replies": bot_state.daily_reply_counter,
+            "daily_skips": bot_state.daily_skip_count,
+            "daily_unanswered": bot_state.daily_unanswered_count,
+            "daily_ai_replied": bot_state.daily_ai_replied_count,
+            "cache_size": len(bot_state.bot_state.replied_cache),
         }
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -155,7 +166,6 @@ if not STORE_KNOWLEDGE:
 STORE_KNOWLEDGE_ANSWERS = []
 
 def parse_knowledge_answers():
-    global STORE_KNOWLEDGE_ANSWERS
     STORE_KNOWLEDGE_ANSWERS = []
     for line in STORE_KNOWLEDGE.split('\n'):
         if line.startswith('J:'):
@@ -165,15 +175,12 @@ parse_knowledge_answers()
 
 def reload_knowledge():
     """Reload STORE_KNOWLEDGE if the file content changes."""
-    global STORE_KNOWLEDGE, KNOWLEDGE_PATH
     for p_path in paths_to_try:
         if os.path.isfile(p_path):
             try:
                 with open(p_path, "r", encoding="utf-8") as f:
                     new_content = f.read().strip()
                 if new_content and new_content != STORE_KNOWLEDGE:
-                    STORE_KNOWLEDGE = new_content
-                    KNOWLEDGE_PATH = p_path
                     parse_knowledge_answers()
                     log.info("🔄 Knowledge base reloaded dari: %s", p_path)
                 return
@@ -347,6 +354,7 @@ async def get_ai_reply(buyer_message: str) -> str:
     return "TIDAK TAHU"
 
 def _clean_ai_reply(reply: str) -> str:
+    reply = reply.strip()
     reply_lower = reply.lower()
     if reply_lower.startswith("j:"):
         reply = reply[2:].strip()
@@ -448,15 +456,12 @@ function isSeller(el, container) {
 }
 """
 
-SENT_MESSAGES = {}
-HAS_SETUP_TABS = False
 
 async def do_human_delay(page, min_ms=2000, max_ms=4500):
     delay = random.randint(min_ms, max_ms)
     await page.wait_for_timeout(delay)
 
 async def setup_chat_view(page) -> bool:
-    global HAS_SETUP_TABS
     """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
     
     # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
@@ -467,7 +472,7 @@ async def setup_chat_view(page) -> bool:
             await do_human_delay(page, 3000, 7000)
             await reload_btn.click()
             await page.wait_for_timeout(3000)
-            HAS_SETUP_TABS = False
+            bot_state.has_setup_tabs = False
             return False
             
         coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
@@ -479,7 +484,7 @@ async def setup_chat_view(page) -> bool:
             except Exception:
                 pass
             await page.wait_for_timeout(5000)
-            HAS_SETUP_TABS = False
+            bot_state.has_setup_tabs = False
             return False
 
         html_content = (await page.content()).lower()
@@ -491,7 +496,7 @@ async def setup_chat_view(page) -> bool:
             except Exception:
                 pass
             await page.wait_for_timeout(5000)
-            HAS_SETUP_TABS = False
+            bot_state.has_setup_tabs = False
             return False
     except Exception:
         pass
@@ -526,11 +531,11 @@ async def setup_chat_view(page) -> bool:
         }''')
         
         # Jika chat sudah tampil DAN tab-tab sudah disetup, kita berhenti di sini.
-        if items_found and HAS_SETUP_TABS:
+        if items_found and bot_state.has_setup_tabs:
             return True
             
         if not items_found:
-            HAS_SETUP_TABS = False
+            bot_state.has_setup_tabs = False
     except Exception:
         pass
 
@@ -554,7 +559,7 @@ async def setup_chat_view(page) -> bool:
         # Tunggu sampai "Semua Chat" visible agar tidak terlewat setelah reload
         await semua_chat.wait_for(state="visible", timeout=10000)
         
-        if not HAS_SETUP_TABS:
+        if not bot_state.has_setup_tabs:
             # Berikan jeda yang lebih lama di awal agar sistem keamanan Shopee tidak curiga
             log.info("Menunggu UI termuat penuh (jeda 3-6 detik) sebelum setup tab...")
             await do_human_delay(page, 3000, 6000)
@@ -566,10 +571,10 @@ async def setup_chat_view(page) -> bool:
                 await do_human_delay(page, 1500, 3500)
                 await semua_pembeli.click()
                 await page.wait_for_timeout(1000)
-            HAS_SETUP_TABS = True
+            bot_state.has_setup_tabs = True
     except Exception as e:
         log.warning("Gagal setup tab Semua Chat/Semua Pembeli: %s", e)
-        # Jangan set HAS_SETUP_TABS = True agar di iterasi berikutnya dicoba lagi
+        # Jangan set bot_state.has_setup_tabs = True agar di iterasi berikutnya dicoba lagi
         return False
         
     return True
@@ -900,18 +905,17 @@ async def send_reply(page, reply_text: str, username: str) -> bool:
         log.info("=== REPLY RESULT: SUCCESS (sent via Enter) ===")
     return True
 
-async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
-    global DAILY_REPLY_COUNTER, DAILY_REPLY_DATE, DAILY_SKIP_COUNT, DAILY_UNANSWERED_COUNT, DAILY_AI_REPLIED_COUNT
+async def handle_unread_chats(page: Page) -> int:
     current_date = time.strftime("%Y-%m-%d")
-    if DAILY_REPLY_DATE != current_date:
-        if DAILY_REPLY_DATE:
+    if bot_state.daily_reply_date != current_date:
+        if bot_state.daily_reply_date:
             log.info("📊 Daily summary [%s]: replied=%d, skipped=%d, unanswered=%d", 
-                     DAILY_REPLY_DATE, DAILY_AI_REPLIED_COUNT, DAILY_SKIP_COUNT, DAILY_UNANSWERED_COUNT)
-        DAILY_REPLY_DATE = current_date
-        DAILY_REPLY_COUNTER = 0
-        DAILY_SKIP_COUNT = 0
-        DAILY_UNANSWERED_COUNT = 0
-        DAILY_AI_REPLIED_COUNT = 0
+                     bot_state.daily_reply_date, bot_state.daily_ai_replied_count, bot_state.daily_skip_count, bot_state.daily_unanswered_count)
+        bot_state.daily_reply_date = current_date
+        bot_state.daily_reply_counter = 0
+        bot_state.daily_skip_count = 0
+        bot_state.daily_unanswered_count = 0
+        bot_state.daily_ai_replied_count = 0
 
     processed = 0
     try:
@@ -988,7 +992,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                                     cache_key_daily = f"{u_name}_{datetime.now().strftime('%Y-%m-%d')}"
                                     
                                     # Abaikan jika preview ini sudah diproses, ATAU jika hari ini sudah pernah dibalas
-                                    if cache_key_preview not in replied_cache and cache_key_daily not in replied_cache:
+                                    if cache_key_preview not in bot_state.replied_cache and cache_key_daily not in bot_state.replied_cache:
                                         target_item = item
                                         target_username = u_name
                                         target_index = idx
@@ -1003,7 +1007,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     break
                 
                 # Simpan preview ini ke cache agar tidak diloop berulang kali jika ternyata di-skip
-                replied_cache[target_cache_key_preview] = time.time()
+                bot_state.replied_cache[target_cache_key_preview] = time.time()
                 
                 item = target_item
                 username = target_username
@@ -1096,7 +1100,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                     for ans in STORE_KNOWLEDGE_ANSWERS:
                         if len(ans) > 10 and ans.lower()[:30] in msg_lower:
                             msg["isSeller"] = True
-                    if username in SENT_MESSAGES and msg_lower in SENT_MESSAGES[username]:
+                    if username in bot_state.sent_messages and msg_lower in bot_state.sent_messages[username]:
                         msg["isSeller"] = True
 
                 chat_history = chat_history[-4:]
@@ -1127,7 +1131,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
 
                 if last_msg_is_seller and not is_assistant_ai and not is_image:
                     log.info("Seller already replied to the latest message. Skipping.")
-                    DAILY_SKIP_COUNT += 1
+                    bot_state.daily_skip_count += 1
                     continue
 
                 buyer_message = ""
@@ -1162,20 +1166,20 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                         buyer_message = "[Pesan terakhir berupa gambar]"
 
                 cache_key = f"{username}:{buyer_message[:50]}"
-                if cache_key in replied_cache:
+                if cache_key in bot_state.replied_cache:
                     log.debug("Already replied to '%s' with this message context, skipping.", username)
                     continue
                 
                 buyer_msg_lower = buyer_message.strip().lower().rstrip(".,!?~ ")
                 if buyer_msg_lower in SKIP_MESSAGES:
                     log.info("Skipping non-question acknowledgment for '%s': %s", username, buyer_message)
-                    replied_cache[cache_key] = time.time()
-                    DAILY_SKIP_COUNT += 1
+                    bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.daily_skip_count += 1
                     continue
 
-                if DAILY_REPLY_COUNTER >= MAX_DAILY_REPLIES:
+                if bot_state.daily_reply_counter >= MAX_DAILY_REPLIES:
                     log.warning("⚠️ Daily reply limit reached (%d). Skipping reply for '%s'.", MAX_DAILY_REPLIES, username)
-                    replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[cache_key] = time.time()
                     continue
 
                 if force_default_reply:
@@ -1194,12 +1198,12 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                         except Exception as e:
                             log.error("Gagal mencatat: %s", e)
                         log.info("SKIP: Fallback TIDAK TAHU, biarkan admin jawab.")
-                        replied_cache[cache_key] = time.time()
-                        DAILY_UNANSWERED_COUNT += 1
+                        bot_state.replied_cache[cache_key] = time.time()
+                        bot_state.daily_unanswered_count += 1
                         continue
                     else:
-                        replied_cache[cache_key] = time.time()
-                        DAILY_SKIP_COUNT += 1
+                        bot_state.replied_cache[cache_key] = time.time()
+                        bot_state.daily_skip_count += 1
                         continue
 
                 if "tidak tahu" in reply_text.lower() or "maaf" in reply_text.lower() or (reply_text == DEFAULT_REPLY and not force_default_reply):
@@ -1214,7 +1218,7 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                             log.error("Gagal mencatat: %s", e)
                         
                         log.info("Dicatat ke unanswered_questions.txt untuk di-review admin, tapi tetap dikirimkan balasan ala CS.")
-                        DAILY_UNANSWERED_COUNT += 1
+                        bot_state.daily_unanswered_count += 1
 
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
                 log.info("Reply text: %s", reply_text[:80])
@@ -1223,14 +1227,14 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 if reply_status == -1:
                     return -1
                 elif reply_status:
-                    if username not in SENT_MESSAGES:
-                        SENT_MESSAGES[username] = set()
-                    SENT_MESSAGES[username].add(reply_text.strip().lower())
+                    if username not in bot_state.sent_messages:
+                        bot_state.sent_messages[username] = set()
+                    bot_state.sent_messages[username].add(reply_text.strip().lower())
                     
-                    replied_cache[cache_key] = time.time()
-                    DAILY_REPLY_COUNTER += 1
-                    DAILY_AI_REPLIED_COUNT += 1
-                    log.info("Daily reply count: %d/%d", DAILY_REPLY_COUNTER, MAX_DAILY_REPLIES)
+                    bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.daily_reply_counter += 1
+                    bot_state.daily_ai_replied_count += 1
+                    log.info("Daily reply count: %d/%d", bot_state.daily_reply_counter, MAX_DAILY_REPLIES)
                     processed += 1
                 
                 await page.wait_for_timeout(2000)
@@ -1251,7 +1255,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
 
 
 async def run_bot():
-    global HAS_SETUP_TABS
     """Main daemon loop."""
     log.info("Starting Shopee Auto-Reply Bot")
     log.info("Profile directory: %s", PROFILE_DIR)
@@ -1288,9 +1291,7 @@ async def run_bot():
                 log.info("Received signal %s (Windows), initiating graceful shutdown...", sig)
                 loop.call_soon_threadsafe(shutdown_event.set)
             signal.signal(getattr(signal, signame), win_handler)
-
-    global REPLIED_CACHE
-    replied_cache = REPLIED_CACHE
+    bot_state.replied_cache = bot_state.bot_state.replied_cache
 
     async with async_playwright() as p:
         while not shutdown_event.is_set():
@@ -1401,44 +1402,42 @@ async def run_bot():
                         if time.time() - browser_start_time > browser_lifetime_limit:
                             log.info("Browser reached lifetime limit (%d seconds). Scheduling restart...", browser_lifetime_limit)
                             break
-    
-                        global DAILY_REPLY_DATE, SENT_MESSAGES
                         current_date = datetime.now().strftime("%Y-%m-%d")
-                        if current_date != DAILY_REPLY_DATE:
-                            DAILY_REPLY_DATE = current_date
-                            SENT_MESSAGES.clear()
-                            log.info("Daily reset: Cleared SENT_MESSAGES cache.")
+                        if current_date != bot_state.daily_reply_date:
+                            bot_state.daily_reply_date = current_date
+                            bot_state.sent_messages.clear()
+                            log.info("Daily reset: Cleared bot_state.sent_messages cache.")
 
-                        # Clean up expired replied_cache items (> 24 hours)
+                        # Clean up expired bot_state.replied_cache items (> 24 hours)
                         now = time.time()
-                        expired = [k for k, v in replied_cache.items() if now - v > 86400]
+                        expired = [k for k, v in bot_state.replied_cache.items() if now - v > 86400]
                         for k in expired:
-                            del replied_cache[k]
+                            del bot_state.replied_cache[k]
                             
                         # Enforce MAX_CACHE_SIZE limit
-                        if len(replied_cache) > MAX_CACHE_SIZE:
-                            sorted_items = sorted(replied_cache.items(), key=lambda x: x[1])
+                        if len(bot_state.replied_cache) > MAX_CACHE_SIZE:
+                            sorted_items = sorted(bot_state.replied_cache.items(), key=lambda x: x[1])
                             for k, _ in sorted_items[:len(sorted_items) // 5]:
-                                del replied_cache[k]
-                            log.info("Cache trimmed from >%d to %d entries", MAX_CACHE_SIZE, len(replied_cache))
+                                del bot_state.replied_cache[k]
+                            log.info("Cache trimmed from >%d to %d entries", MAX_CACHE_SIZE, len(bot_state.replied_cache))
     
                         cycle_count += 1
                         
                         # Heartbeat logging every ~5 minutes
                         if cycle_count % 60 == 0:
-                            log.info("💓 Bot heartbeat: %d cycles completed, replied_cache size: %d", 
-                                     cycle_count, len(replied_cache))
+                            log.info("💓 Bot heartbeat: %d cycles completed, bot_state.replied_cache size: %d", 
+                                     cycle_count, len(bot_state.replied_cache))
     
                         # Hot reload store_knowledge.txt every ~10 minutes
                         if cycle_count % 120 == 0:
                             reload_knowledge()
                             cleanup_old_screenshots(LOG_DIR, 24)
     
-                        # Clean up expired replied_cache items (> 24 hours)
+                        # Clean up expired bot_state.replied_cache items (> 24 hours)
                         now = time.time()
-                        expired = [k for k, v in replied_cache.items() if now - v > 86400]
+                        expired = [k for k, v in bot_state.replied_cache.items() if now - v > 86400]
                         for k in expired:
-                            del replied_cache[k]
+                            del bot_state.replied_cache[k]
     
                         # Auto-close extra tabs (e.g. captcha popups) and focus main tab
                         if len(context.pages) > 1:
@@ -1483,7 +1482,7 @@ async def run_bot():
                                     # Kembali ke halaman chat
                                     await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
                                     await page.wait_for_timeout(5000)
-                                    HAS_SETUP_TABS = False
+                                    bot_state.has_setup_tabs = False
                                 except Exception as reload_err:
                                     log.error("Gagal saat mencoba force reload halaman blank: %s", reload_err)
                                 continue # Lanjut iterasi baru agar tidak mengeksekusi handle_unread_chats di DOM yang kosong
@@ -1512,14 +1511,14 @@ async def run_bot():
                         # Scheduled page reload has been removed by user request
     
                         # Scan and reply to unread chats directly on the live page
-                        count = await handle_unread_chats(page, replied_cache)
+                        count = await handle_unread_chats(page, bot_state.replied_cache)
                         if count == -1:
                             log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat! Menunggu jeda manusiawi...")
                             await do_human_delay(page, 3000, 7000)
                             try:
                                 await page.reload(wait_until="domcontentloaded", timeout=30000)
                                 await page.wait_for_timeout(5000)
-                                HAS_SETUP_TABS = False
+                                bot_state.has_setup_tabs = False
                             except Exception as e:
                                 log.error("Gagal reload: %s", e)
                             continue
