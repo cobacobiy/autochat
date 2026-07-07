@@ -24,20 +24,17 @@ jobs:
           python-version: '3.11'
 
       - name: Verify Python & Upgrade Pip
-        shell: pwsh
+        continue-on-error: true
         run: |
           python --version
           python -m pip install --upgrade pip --break-system-packages
-          exit 0
 
       - name: Install Linter
-        shell: pwsh
+        continue-on-error: true
         run: |
           python -m pip install ruff --break-system-packages
-          exit 0
 
       - name: Validasi Kode (Lint)
-        shell: pwsh
         run: |
           python -m ruff check bot/
 
@@ -187,11 +184,10 @@ jobs:
           python-version: '3.11'
 
       - name: Stop Preview Container
-        shell: pwsh
+        continue-on-error: true
         run: |
-          Write-Host "PR closed. Stopping preview container..."
+          python -c "print('PR closed. Stopping preview container...')"
           docker rm -f shopee-bot-preview
-          exit 0
 
   # ============================================
   # Job 4: Deploy Production (HANYA push ke main)
