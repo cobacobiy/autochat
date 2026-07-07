@@ -29,7 +29,7 @@ COPY . bot/
 RUN mkdir -p /data/shopee-profile /data/logs
 
 # ── Supervisor config path ────────────────────────────────────────────────────
-COPY bot/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Expose noVNC web port
 EXPOSE 6080
