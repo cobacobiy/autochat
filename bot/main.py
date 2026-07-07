@@ -323,7 +323,7 @@ async def run_bot():
                         # Scheduled page reload has been removed by user request
     
                         # Scan and reply to unread chats directly on the live page
-                        count = await handle_unread_chats(page, bot_state.replied_cache)
+                        count = await handle_unread_chats(page)
                         if count == -1:
                             log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat! Menunggu jeda manusiawi...")
                             await do_human_delay(page, 3000, 7000)
