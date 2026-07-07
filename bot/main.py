@@ -87,6 +87,8 @@ DAILY_REPLY_COUNTER = 0
 DAILY_SKIP_COUNT = 0
 DAILY_UNANSWERED_COUNT = 0
 DAILY_AI_REPLIED_COUNT = 0
+BOT_START_TIME = time.time()
+REPLIED_CACHE = {}
 
 def cleanup_old_screenshots(log_dir, hours=24):
     try:
@@ -104,10 +106,16 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         status = {
             "status": "ok",
+            "uptime_seconds": int(time.time() - BOT_START_TIME),
+            "ai_provider": AI_PROVIDER,
+            "ai_model": OLLAMA_MODEL if AI_PROVIDER == "ollama" else GEMINI_MODEL,
+            "knowledge_loaded": bool(STORE_KNOWLEDGE),
+            "knowledge_entries": len(STORE_KNOWLEDGE_ANSWERS),
             "daily_replies": DAILY_REPLY_COUNTER,
             "daily_skips": DAILY_SKIP_COUNT,
             "daily_unanswered": DAILY_UNANSWERED_COUNT,
             "daily_ai_replied": DAILY_AI_REPLIED_COUNT,
+            "cache_size": len(REPLIED_CACHE),
         }
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -222,7 +230,7 @@ def get_auto_reply(message: str) -> str:
     """Fallback when AI fails or times out."""
     msg = message.lower()
     for keyword, reply in AUTO_REPLIES.items():
-        if keyword in msg:
+        if re.search(rf'\b{re.escape(keyword)}\b', msg):
             return reply
     return "TIDAK TAHU"
 
@@ -256,7 +264,7 @@ def build_system_prompt() -> str:
 async def get_ai_reply(buyer_message: str) -> str:
     system_prompt = build_system_prompt()
     
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=120) as client:
                 if AI_PROVIDER == "gemini":
@@ -326,12 +334,15 @@ async def get_ai_reply(buyer_message: str) -> str:
                             return _clean_ai_reply(reply)
                     else:
                         log.warning("Ollama attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
+                        if resp.status_code == 503:
+                            log.info("Ollama is loading model, waiting longer...")
+                            await asyncio.sleep(10)
                         
         except Exception as e:
             log.warning("%s attempt %d error: %s", AI_PROVIDER.capitalize(), attempt + 1, repr(e))
         
-        if attempt < 1:
-            await asyncio.sleep(2)
+        if attempt < 2:
+            await asyncio.sleep(2 ** attempt)
             
     return "TIDAK TAHU"
 
@@ -1278,7 +1289,8 @@ async def run_bot():
                 loop.call_soon_threadsafe(shutdown_event.set)
             signal.signal(getattr(signal, signame), win_handler)
 
-    replied_cache = {}
+    global REPLIED_CACHE
+    replied_cache = REPLIED_CACHE
 
     async with async_playwright() as p:
         while not shutdown_event.is_set():

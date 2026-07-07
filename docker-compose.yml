@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "main.py"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
       interval: 30s
       timeout: 10s
       retries: 3
