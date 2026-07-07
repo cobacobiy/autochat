@@ -10,3 +10,8 @@ bot-profile-preview/
 *.html
 *.diff
 
+# Excluded manually
+.ruff_cache/
+output.log
+patch.py
+bot_main_from_main.py

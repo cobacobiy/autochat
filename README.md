@@ -22,7 +22,7 @@ Bot ini dibuat menggunakan **Python**, **Playwright**, dan mesin LLM lokal (teru
 ## 🛠️ Persyaratan Sistem
 
 - **Python 3.10+**
-- **Ollama** (terinstall di lokal untuk penggunaan LLM *offline* - rekomendasi model: `qwen2` / `llama3`).
+- **Ollama** (terinstall di lokal untuk penggunaan LLM *offline* - rekomendasi model: `qwen2.5:3b`).
 - **Docker** (Opsional, jika ingin menjalankan via container CI/CD).
 
 ---
@@ -53,12 +53,14 @@ Bot ini dibuat menggunakan **Python**, **Playwright**, dan mesin LLM lokal (teru
    ```env
    AI_PROVIDER=ollama
    OLLAMA_URL=http://localhost:11434
-   OLLAMA_MODEL=qwen2
+   OLLAMA_MODEL=qwen2.5:3b
    
    # Untuk Gemini (opsional jika AI_PROVIDER=gemini)
    # GEMINI_API_KEY=your_api_key_here
    
    HEADLESS=false # Ubah ke 'true' jika ingin berjalan di latar belakang
+   MAX_DAILY_REPLIES=5000
+   MAX_CACHE_SIZE=1000
    ```
 
 4. **Siapkan Basis Pengetahuan:**
@@ -76,6 +78,9 @@ Jika Anda ingin menjalankannya tanpa pusing dengan instalasi Python, dan ingin f
 docker compose up -d
 ```
 *Gunakan web browser (melalui port `6080` yang diatur di docker-compose) untuk masuk via noVNC dan melakukan login Shopee manual pertama kali.*
+
+### Menggunakan GPU (Docker Passthrough)
+Secara default, container Docker sudah dikonfigurasi untuk menggunakan GPU NVIDIA jika tersedia (lihat `docker-compose.yml` baris 26-32). Pastikan Anda sudah menginstal [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Cek dengan menjalankan `nvidia-smi`.
 
 ---
 
@@ -95,6 +100,14 @@ autochat/
 ├── unanswered_questions.txt # Log pertanyaan sulit yang butuh admin
 └── .env                  # Variabel environment (JANGAN DI-COMMIT)
 ```
+
+---
+
+## 🔄 CI/CD Pipeline
+Repositori ini dilengkapi dengan GitHub Actions (`ci-cd.yml`) yang melakukan:
+1. **Linting**: Mengecek kode dengan `ruff` pada setiap *push* atau *pull request*.
+2. **Deploy Preview**: Membangun image Docker dan merilis environment *preview* lokal saat ada *Pull Request* terbuka.
+3. **Deploy Production**: Langsung melakukan pull image terbaru dari Docker Hub dan me-restart container di server utama saat kode di-*merge* ke branch `main`.
 
 ---
 

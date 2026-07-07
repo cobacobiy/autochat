@@ -12,6 +12,8 @@ import sys
 import time
 import json
 import threading
+import random
+import subprocess
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import httpx
@@ -56,7 +58,9 @@ POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 
 AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+if OLLAMA_URL.endswith("/api/generate") or OLLAMA_URL.endswith("/api/chat"):
+    OLLAMA_URL = OLLAMA_URL.rsplit("/api/", 1)[0]
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -69,6 +73,14 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
 UNANSWERED_PATH = os.getenv("UNANSWERED_PATH", "/app/unanswered_questions.txt")
 MAX_DAILY_REPLIES = int(os.getenv("MAX_DAILY_REPLIES", "5000"))
 MAX_CACHE_SIZE = int(os.getenv("MAX_CACHE_SIZE", "1000"))
+
+for fpath in [UNANSWERED_PATH, os.getenv("KNOWLEDGE_PATH", "/app/store_knowledge.txt")]:
+    if os.path.isdir(fpath):
+        log.error("FATAL: '%s' is a directory, not a file! Removing and recreating...", fpath)
+        import shutil
+        shutil.rmtree(fpath)
+        with open(fpath, "w") as f:
+            f.write("")
 
 DAILY_REPLY_DATE = ""
 DAILY_REPLY_COUNTER = 0
@@ -196,7 +208,7 @@ AUTO_REPLIES = {
     "pengiriman": "Penjaringan Jakarta Utara",
     "dari mana": "Penjaringan Jakarta Utara",
 }
-DEFAULT_REPLY = "Ada yang bisa dibantu?"
+DEFAULT_REPLY = os.getenv("DEFAULT_REPLY", "Ada yang bisa dibantu?")
 
 SKIP_MESSAGES = {
     "ok", "oke", "baik", "baik kak", "baik ka", "oke kak", "oke ka",
@@ -252,7 +264,8 @@ async def get_ai_reply(buyer_message: str) -> str:
                         log.error("GEMINI_API_KEY is not set!")
                         return "TIDAK TAHU"
                     # Default to gemini-flash-latest as 1.5 is deprecated
-                    model_name = GEMINI_MODEL if GEMINI_MODEL and "1.5" not in GEMINI_MODEL else "gemini-flash-latest"
+                    deprecated_gemini_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
+                    model_name = GEMINI_MODEL if GEMINI_MODEL and GEMINI_MODEL not in deprecated_gemini_models else "gemini-flash-latest"
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
                     payload = {
                         "systemInstruction": {"parts": [{"text": system_prompt}]},
@@ -428,7 +441,6 @@ SENT_MESSAGES = {}
 HAS_SETUP_TABS = False
 
 async def do_human_delay(page, min_ms=2000, max_ms=4500):
-    import random
     delay = random.randint(min_ms, max_ms)
     await page.wait_for_timeout(delay)
 
@@ -989,7 +1001,6 @@ async def handle_unread_chats(page: Page, replied_cache: dict) -> int:
                 
                 log.info("Processing chat #%d: %s", index + 1, item_text.replace('\n', ' | ')[:80])
                 
-                import random
                 human_delay = random.randint(4000, 8000)
                 log.info("Jeda sejenak %d ms layaknya manusia sebelum klik chat agar tidak dicurigai bot...", human_delay)
                 await page.wait_for_timeout(human_delay)
@@ -1302,7 +1313,6 @@ async def run_bot():
                 except Exception as launch_err:
                     log.error("Failed to launch Chromium (timeout or error): %s", launch_err)
                     log.info("Killing dangling Chromium processes to recover...")
-                    import subprocess
                     if os.name == 'nt':
                         subprocess.run(["taskkill", "/F", "/IM", "chrome.exe", "/T"], capture_output=True)
                     else:
@@ -1379,6 +1389,26 @@ async def run_bot():
                         if time.time() - browser_start_time > browser_lifetime_limit:
                             log.info("Browser reached lifetime limit (%d seconds). Scheduling restart...", browser_lifetime_limit)
                             break
+    
+                        global DAILY_REPLY_DATE, SENT_MESSAGES
+                        current_date = datetime.now().strftime("%Y-%m-%d")
+                        if current_date != DAILY_REPLY_DATE:
+                            DAILY_REPLY_DATE = current_date
+                            SENT_MESSAGES.clear()
+                            log.info("Daily reset: Cleared SENT_MESSAGES cache.")
+
+                        # Clean up expired replied_cache items (> 24 hours)
+                        now = time.time()
+                        expired = [k for k, v in replied_cache.items() if now - v > 86400]
+                        for k in expired:
+                            del replied_cache[k]
+                            
+                        # Enforce MAX_CACHE_SIZE limit
+                        if len(replied_cache) > MAX_CACHE_SIZE:
+                            sorted_items = sorted(replied_cache.items(), key=lambda x: x[1])
+                            for k, _ in sorted_items[:len(sorted_items) // 5]:
+                                del replied_cache[k]
+                            log.info("Cache trimmed from >%d to %d entries", MAX_CACHE_SIZE, len(replied_cache))
     
                         cycle_count += 1
                         
