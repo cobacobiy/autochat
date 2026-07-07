@@ -23,13 +23,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 
-COPY . .
+COPY . bot/
 
 # ── Runtime dirs ──────────────────────────────────────────────────────────────
 RUN mkdir -p /data/shopee-profile /data/logs
 
 # ── Supervisor config path ────────────────────────────────────────────────────
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY bot/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Expose noVNC web port
 EXPOSE 6080
