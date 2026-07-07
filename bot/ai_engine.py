@@ -1,7 +1,8 @@
 import re
 import httpx
 import logging
-import asyncio
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 from bot.state import bot_state
 from bot.config import (
     AUTO_REPLIES, AI_PROVIDER, OLLAMA_URL, OLLAMA_MODEL, 
@@ -46,88 +47,95 @@ def build_system_prompt() -> str:
         "============================="
     )
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+    reraise=False
+)
+async def _call_ai_api(system_prompt: str, buyer_message: str) -> str:
+    async with httpx.AsyncClient(timeout=120) as client:
+        if AI_PROVIDER == "gemini":
+            if not GEMINI_API_KEY:
+                log.error("GEMINI_API_KEY is not set!")
+                return "TIDAK TAHU"
+            # Default to gemini-flash-latest as 1.5 is deprecated
+            deprecated_gemini_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
+            model_name = GEMINI_MODEL if GEMINI_MODEL and GEMINI_MODEL not in deprecated_gemini_models else "gemini-flash-latest"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "systemInstruction": {"parts": [{"text": system_prompt}]},
+                "contents": [{"parts": [{"text": buyer_message}]}],
+                "generationConfig": {"temperature": 0.0, "topP": 0.1}
+            }
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            
+            try:
+                reply = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                return _clean_ai_reply(reply)
+            except (KeyError, IndexError) as e:
+                log.warning("Unexpected Gemini response format: %s", e)
+                return "TIDAK TAHU"
+                
+        elif AI_PROVIDER == "claude":
+            if not ANTHROPIC_API_KEY:
+                log.error("ANTHROPIC_API_KEY is not set!")
+                return "TIDAK TAHU"
+            url = "https://api.anthropic.com/v1/messages"
+            headers = {
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            payload = {
+                "model": ANTHROPIC_MODEL,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": buyer_message}],
+                "max_tokens": 512,
+                "temperature": 0.0
+            }
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            
+            try:
+                reply = resp.json()["content"][0]["text"].strip()
+                return _clean_ai_reply(reply)
+            except (KeyError, IndexError) as e:
+                log.warning("Unexpected Claude response format: %s", e)
+                return "TIDAK TAHU"
+                
+        else:
+            # Default fallback to Ollama
+            resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
+                "model": OLLAMA_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": buyer_message}
+                ],
+                "stream": False,
+                "options": {"temperature": 0.0, "top_p": 0.1, "num_predict": 200}
+            })
+            
+            if resp.status_code == 503:
+                log.info("Ollama is loading model, will trigger retry...")
+                resp.raise_for_status()
+                
+            resp.raise_for_status()
+            
+            reply = resp.json().get("message", {}).get("content", "").strip()
+            if reply:
+                return _clean_ai_reply(reply)
+            return "TIDAK TAHU"
+
 async def get_ai_reply(buyer_message: str) -> str:
     system_prompt = build_system_prompt()
-    
-    for attempt in range(3):
-        try:
-            async with httpx.AsyncClient(timeout=120) as client:
-                if AI_PROVIDER == "gemini":
-                    if not GEMINI_API_KEY:
-                        log.error("GEMINI_API_KEY is not set!")
-                        return "TIDAK TAHU"
-                    # Default to gemini-flash-latest as 1.5 is deprecated
-                    deprecated_gemini_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
-                    model_name = GEMINI_MODEL if GEMINI_MODEL and GEMINI_MODEL not in deprecated_gemini_models else "gemini-flash-latest"
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-                    payload = {
-                        "systemInstruction": {"parts": [{"text": system_prompt}]},
-                        "contents": [{"parts": [{"text": buyer_message}]}],
-                        "generationConfig": {"temperature": 0.0, "topP": 0.1}
-                    }
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        try:
-                            reply = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                            return _clean_ai_reply(reply)
-                        except (KeyError, IndexError) as e:
-                            log.warning("Unexpected Gemini response format: %s", e)
-                    else:
-                        log.warning("Gemini attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
-                        
-                elif AI_PROVIDER == "claude":
-                    if not ANTHROPIC_API_KEY:
-                        log.error("ANTHROPIC_API_KEY is not set!")
-                        return "TIDAK TAHU"
-                    url = "https://api.anthropic.com/v1/messages"
-                    headers = {
-                        "x-api-key": ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
-                    }
-                    payload = {
-                        "model": ANTHROPIC_MODEL,
-                        "system": system_prompt,
-                        "messages": [{"role": "user", "content": buyer_message}],
-                        "max_tokens": 512,
-                        "temperature": 0.0
-                    }
-                    resp = await client.post(url, headers=headers, json=payload)
-                    if resp.status_code == 200:
-                        try:
-                            reply = resp.json()["content"][0]["text"].strip()
-                            return _clean_ai_reply(reply)
-                        except (KeyError, IndexError) as e:
-                            log.warning("Unexpected Claude response format: %s", e)
-                    else:
-                        log.warning("Claude attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
-                        
-                else:
-                    # Default fallback to Ollama
-                    resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
-                        "model": OLLAMA_MODEL,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": buyer_message}
-                        ],
-                        "stream": False,
-                        "options": {"temperature": 0.0, "top_p": 0.1, "num_predict": 200}
-                    })
-                    if resp.status_code == 200:
-                        reply = resp.json().get("message", {}).get("content", "").strip()
-                        if reply:
-                            return _clean_ai_reply(reply)
-                    else:
-                        log.warning("Ollama attempt %d returned status %s: %s", attempt + 1, resp.status_code, resp.text)
-                        if resp.status_code == 503:
-                            log.info("Ollama is loading model, waiting longer...")
-                            await asyncio.sleep(10)
-                        
-        except Exception as e:
-            log.warning("%s attempt %d error: %s", AI_PROVIDER.capitalize(), attempt + 1, repr(e))
-        
-        if attempt < 2:
-            await asyncio.sleep(2 ** attempt)
+    try:
+        reply = await _call_ai_api(system_prompt, buyer_message)
+        if reply:
+            return reply
+    except Exception as e:
+        log.warning("All AI provider attempts failed: %s", e)
             
     return "TIDAK TAHU"
 
@@ -154,4 +162,3 @@ def _clean_ai_reply(reply: str) -> str:
         return "TIDAK TAHU"
         
     return reply
-

@@ -15,3 +15,12 @@ bot-profile-preview/
 output.log
 patch.py
 bot_main_from_main.py
+
+# Temporary refactoring scripts
+patch_*.py
+split_*.py
+fix_*.py
+extract_*.py
+restore_*.py
+temp_*.py
+refactor_*.py

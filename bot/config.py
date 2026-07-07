@@ -42,89 +42,17 @@ SKIP_MESSAGES = {
     "nuhun", "suwun"
 }
 
-IS_SELLER_JS = r"""
-function isSeller(el, container) {
-    let current = el;
-    for (let depth = 0; depth < 15; depth++) {
-        if (!current) break;
-        
-        // 1. Periksa data-cy
-        const dataCy = current.getAttribute('data-cy') || '';
-        if (dataCy.includes('send') || dataCy.includes('seller') || dataCy.includes('to-user')) return true;
-        if (dataCy.includes('receive') || dataCy.includes('buyer') || dataCy === 'webchat-message-receive') return false;
-        
-        // 2. Periksa nama class
-        const className = (current.className || '').toString().toLowerCase();
-        if (className.includes('send') || className.includes('seller') || 
-            className.includes('self') || className.includes('right')) return true;
-        if (className.includes('receive') || className.includes('buyer') || className.includes('left')) return false;
+_JS_DIR = os.path.join(os.path.dirname(__file__), "js")
 
-        // 3. Periksa CSS alignment (align-self, justify-content, dsb.)
-        const style = window.getComputedStyle(current);
-        if (style.justifyContent === 'flex-end' || style.textAlign === 'right' || 
-            style.alignItems === 'flex-end' || style.flexDirection === 'row-reverse' ||
-            style.alignSelf === 'flex-end' || style.justifySelf === 'end') return true;
-        
-        current = current.parentElement;
-    }
-    
-    // Fallback berdasarkan posisi relatif terhadap kontainer
-    if (container && container !== document.body) {
-        const cRect = container.getBoundingClientRect();
-        const bRect = el.getBoundingClientRect();
-        if (cRect.width > 0) {
-            const relLeft = (bRect.left - cRect.left) / cRect.width;
-            const bubbleCenter = bRect.left + (bRect.width / 2);
-            const containerCenter = cRect.left + (cRect.width / 2);
-            if (relLeft > 0.4 || bubbleCenter > containerCenter + 10) return true;
-            if (bubbleCenter < containerCenter - 10) return false;
-        }
-    }
-    
-    // Fallback berdasarkan warna background
-    const bubbleStyle = window.getComputedStyle(el);
-    const bgColor = bubbleStyle.backgroundColor || '';
-    if (bgColor && (
-        bgColor.includes('238') ||
-        bgColor.includes('255, 87') ||
-        bgColor.includes('ee4d2d') ||
-        bgColor.includes('232, 245') ||
-        bgColor.includes('234, 245') ||
-        bgColor.includes('214, 255') ||
-        bgColor.includes('204, 255') ||
-        el.closest('[class*="seller"]') ||
-        el.closest('[class*="right"]') ||
-        el.closest('[class*="send"]')
-    )) {
-        return true;
-    }
-    
-    return false;
-}
-"""
+with open(os.path.join(_JS_DIR, "is_seller.js"), encoding="utf-8") as _f:
+    IS_SELLER_JS = _f.read()
 
+with open(os.path.join(_JS_DIR, "get_chat_items.js"), encoding="utf-8") as _f:
+    GET_CHAT_ITEMS_JS = _f.read()
 
-
-GET_CHAT_ITEMS_JS = r"""() => {
-    // Ambil elemen chat dari daftar sidebar kiri (maksimal 5 teratas)
-    const cells = document.querySelectorAll('[data-cy^="webchat-conversation-cell-root"], li');
-    if (cells.length > 0) {
-        return Array.from(cells).slice(0, 5); 
-    }
-    
-    // Fallback
-    const allDivs = [...document.querySelectorAll('div')];
-    const fallbackCells = [];
-    for (const div of allDivs) {
-        const text = div.textContent || '';
-        const hasTimestamp = /\b\d{2}:\d{2}\b/.test(text) || text.includes('Yesterday') || text.includes('Kemarin');
-        if (hasTimestamp && text.length > 5 && text.length < 300) {
-            const rect = div.getBoundingClientRect();
-            if (rect.left > 0 && rect.left < window.innerWidth * 0.4 && rect.height > 20 && rect.height < 150) {
-                fallbackCells.push(div);
-                if (fallbackCells.length >= 5) break;
-            }
-        }
-    }
-    return fallbackCells;
-}"""
+if AI_PROVIDER == "gemini" and not GEMINI_API_KEY:
+    import logging
+    logging.warning("AI_PROVIDER is gemini but GEMINI_API_KEY is not set!")
+elif AI_PROVIDER == "claude" and not ANTHROPIC_API_KEY:
+    import logging
+    logging.warning("AI_PROVIDER is claude but ANTHROPIC_API_KEY is not set!")
