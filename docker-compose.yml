@@ -42,6 +42,8 @@ services:
     ports:
       # noVNC web interface — open http://localhost:6080 to view/control the browser
       - "6080:6080"
+      # Health endpoint API (Production)
+      - "7080:8080"
 
     # Resource limits (adjust to your server)
     deploy:

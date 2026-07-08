@@ -160,5 +160,9 @@ def _clean_ai_reply(reply: str) -> str:
     if len(reply) > 400:
         log.warning("AI reply is suspiciously long (%d chars), likely a hallucination loop. Forcing TIDAK TAHU.", len(reply))
         return "TIDAK TAHU"
+
+    if "tidak tahu" in reply.lower():
+        log.warning("AI explicitly said it doesn't know (contains 'tidak tahu'). Forcing exact TIDAK TAHU.")
+        return "TIDAK TAHU"
         
     return reply

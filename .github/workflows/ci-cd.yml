@@ -171,6 +171,7 @@ jobs:
               "-v", f"{wk}/unanswered_questions.txt:/app/unanswered_questions.txt",
               "-v", f"{wk}/store_knowledge.txt:/app/store_knowledge.txt",
               "-p", "6081:6080",
+              "-p", "7081:8080",
               image
           ]
           subprocess.run(cmd, check=True)
