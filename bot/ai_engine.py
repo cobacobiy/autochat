@@ -162,8 +162,10 @@ def _clean_ai_reply(reply: str) -> str:
         log.warning("AI reply is suspiciously long (%d chars), likely a hallucination loop. Forcing TIDAK TAHU.", len(reply))
         return "TIDAK TAHU"
 
-    if "tidak tahu" in reply.lower():
-        log.warning("AI explicitly said it doesn't know (contains 'tidak tahu'). Forcing exact TIDAK TAHU.")
+    # Intercept variations and typos of "tidak tahu"
+    tidak_tahu_pattern = r"(tidak|tdk|ga|gak|g)\s*(tahu|tau|taho)|gatau|gtau"
+    if re.search(tidak_tahu_pattern, reply.lower()):
+        log.warning("AI explicitly said it doesn't know (matches '%s'). Forcing exact TIDAK TAHU.", re.search(tidak_tahu_pattern, reply.lower()).group(0))
         return "TIDAK TAHU"
         
     if "skip" in reply.lower():

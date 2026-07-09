@@ -8,6 +8,9 @@ def test_clean_ai_reply():
     assert _clean_ai_reply("Jawaban normal") == "Jawaban normal"
     assert _clean_ai_reply("  J: Trim spasi   ") == "Trim spasi"
     assert _clean_ai_reply("Maaf kak, TIDAK TAHU.") == "TIDAK TAHU"
+    assert _clean_ai_reply("TIDAK TAHO") == "TIDAK TAHU"
+    assert _clean_ai_reply("saya ga tau kak") == "TIDAK TAHU"
+    assert _clean_ai_reply("tdk tau") == "TIDAK TAHU"
 
 def test_get_auto_reply():
     # Matches whole word only
