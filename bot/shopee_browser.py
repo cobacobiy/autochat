@@ -302,6 +302,11 @@ async def handle_unread_chats(page: Page) -> int:
                 else:
                     log.info("Buyer message context: %s", buyer_message[:100])
                     reply_text = await get_ai_reply(buyer_message)
+                if reply_text == "SKIP":
+                    log.info("AI memutuskan untuk SKIP pesan ini (mungkin sekadar ucapan terima kasih/konfirmasi).")
+                    bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.daily_skip_count += 1
+                    continue
                 
                 if reply_text == "TIDAK TAHU":
                     log.warning("👉 API Error / Fallback ke TIDAK TAHU: %s", buyer_message)

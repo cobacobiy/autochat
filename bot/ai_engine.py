@@ -29,8 +29,9 @@ def build_system_prompt() -> str:
         "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Pembeli saat checkout ya kak 😊\"\n"
         "3. Jika pembeli meminta dikirim cepat (buru-buru/kapan dikirim), jawab: \"Pesanan kakak akan segera kami proses dan kirimkan sesuai antrean ya kak, mohon ditunggu 😊\"\n"
         "4. Gunakan akal sehat ala CS manusia. Jika ada sapaan atau obrolan santai, balaslah dengan ramah.\n"
-        "5. Jika pembeli menanyakan detail spesifik produk, mengajukan komplain pesanan kurang/salah kirim, meminta pengembalian dana (refund), atau hal lain yang benar-benar TIDAK ADA solusinya di [KNOWLEDGE BASE], Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU (tanpa ada teks atau kalimat tambahan apa pun).\n"
-        "6. Jawab sesingkat dan se-natural mungkin, tidak perlu kaku.\n\n"
+        "5. Jika pembeli HANYA mengucapkan terima kasih, salam, mengonfirmasi pesanan (contoh: 'makasih kak', 'tolong diproses'), Anda WAJIB menjawab HANYA dengan kata: SKIP\n"
+        "6. Jika pembeli menanyakan detail spesifik produk, komplain, refund, atau hal di luar [KNOWLEDGE BASE], Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU\n"
+        "7. Jawab sesingkat dan se-natural mungkin, tidak perlu kaku.\n\n"
         "=== CONTOH CARA MENJAWAB ===\n"
         "Contoh 1 (Komplain barang kurang / salah kirim):\n"
         "Pembeli: \"Pesen isi 50pcs kok dikirim 10pcs\"\n"
@@ -164,5 +165,9 @@ def _clean_ai_reply(reply: str) -> str:
     if "tidak tahu" in reply.lower():
         log.warning("AI explicitly said it doesn't know (contains 'tidak tahu'). Forcing exact TIDAK TAHU.")
         return "TIDAK TAHU"
+        
+    if "skip" in reply.lower():
+        log.warning("AI explicitly wanted to skip (contains 'skip'). Forcing exact SKIP.")
+        return "SKIP"
         
     return reply

@@ -39,7 +39,8 @@ SKIP_MESSAGES = {
     "ok", "oke", "baik", "baik kak", "baik ka", "oke kak", "oke ka",
     "siap", "terima kasih", "makasih", "sami sami", "mks", "thx", "ty",
     "ok kak", "ok ka", "sip", "siap kak", "siap ka", "makasih kak", "makasih ka",
-    "nuhun", "suwun"
+    "nuhun", "suwun", "makasih banyak", "terima kasih banyak",
+    "tolong kirim sesuai pesanan", "sesuai pesanan ya", "sesuai pesanan"
 }
 
 _JS_DIR = os.path.join(os.path.dirname(__file__), "js")
