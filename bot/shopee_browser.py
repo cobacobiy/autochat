@@ -194,6 +194,19 @@ async def handle_unread_chats(page: Page) -> int:
                 # Fitur klik Riwayat Chat dinonaktifkan karena rentan terdeteksi sebagai bot.
                 # Kita akan murni mengandalkan history chat yang sudah tampil di layar (DOM utama).
                 riwayat_buyer_message = ""
+                try:
+                    riwayat_loc = page.locator("text='Lihat Semua Riwayat Chat'")
+                    if await riwayat_loc.count() > 0:
+                        parent_text = await riwayat_loc.first.locator("xpath=..").inner_text()
+                        for line in reversed(parent_text.split('\n')):
+                            line = line.strip()
+                            if line.lower().startswith(username.lower() + ":") or line.lower().startswith(username.lower() + " :"):
+                                idx = line.find(":")
+                                riwayat_buyer_message = line[idx+1:].strip()
+                                break
+                except Exception:
+                    pass
+                    
                 chat_history = await extract_chat_history(page)
 
                 if not chat_history:
