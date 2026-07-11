@@ -120,8 +120,10 @@ async def run_bot():
                         pass
                     continue
 
-                # Check if already logged in
-                if "login" in page.url or "auth" in page.url:
+                # Check if already logged in (ignore is_from_login query param)
+                is_logged_out = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                
+                if is_logged_out:
                     log.warning(
                         "Not logged in! Please log in manually via VNC/headful mode. "
                         "The bot will automatically resume once login is detected. "
@@ -136,7 +138,8 @@ async def run_bot():
                         try:
                             await page.wait_for_timeout(5000)
                             # Check if we are logged in now
-                            if "login" not in page.url and "auth" not in page.url:
+                            current_is_logged_out = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                            if not current_is_logged_out:
                                 log.info("Login detected! Starting polling loop...")
                                 login_detected = True
                                 await page.wait_for_timeout(3000)
@@ -230,7 +233,8 @@ async def run_bot():
                             except Exception:
                                 pass
                             
-                            if (is_blank and "login" not in page.url and "auth" not in page.url) or has_crash_text:
+                            is_logged_out_check = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                            if (is_blank and not is_logged_out_check) or has_crash_text:
                                 log.warning("🚨 TERDETEKSI HALAMAN BLANK PUTIH ATAU CRASH! Menunggu jeda manusiawi sebelum navigasi ulang...")
                                 await do_human_delay(page, 3000, 7000)
                                 try:
@@ -254,11 +258,12 @@ async def run_bot():
                             await page.wait_for_timeout(3000)
     
                         # Dynamic routing check (detect if redirected to login page)
-                        if "login" in page.url or "auth" in page.url:
+                        is_logged_out_inner = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                        if is_logged_out_inner:
                             log.warning("Detected logout/redirect to login page. Retrying navigation...")
                             await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
                             await page.wait_for_timeout(3000)
-                            if "login" in page.url or "auth" in page.url:
+                            if ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower():
                                 log.error("Still not logged in. Waiting for user login...")
                                 try:
                                     await asyncio.wait_for(shutdown_event.wait(), timeout=60)
