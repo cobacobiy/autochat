@@ -7,6 +7,9 @@ PROFILE_DIR = os.getenv("PROFILE_DIR", "/data/shopee-profile")
 SHOPEE_CHAT_URL = os.getenv("SHOPEE_CHAT_URL", "https://seller.shopee.co.id/new-webchat/conversations")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL", "5"))
 
+SHOPEE_USERNAME = os.getenv("SHOPEE_USERNAME", "")
+SHOPEE_PASSWORD = os.getenv("SHOPEE_PASSWORD", "")
+
 AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")

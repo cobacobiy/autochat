@@ -8,7 +8,7 @@ from datetime import datetime
 
 from playwright.async_api import async_playwright
 
-from bot.config import LOG_DIR, PROFILE_DIR, SHOPEE_CHAT_URL, POLL_INTERVAL_SECONDS, MAX_CACHE_SIZE
+from bot.config import LOG_DIR, PROFILE_DIR, SHOPEE_CHAT_URL, POLL_INTERVAL_SECONDS, MAX_CACHE_SIZE, SHOPEE_USERNAME, SHOPEE_PASSWORD
 from bot.state import bot_state
 from bot.knowledge import reload_knowledge
 from bot.utils import do_human_delay, cleanup_old_screenshots
@@ -130,7 +130,28 @@ async def run_bot():
                         "Profile will be saved at: %s",
                         PROFILE_DIR,
                     )
-                    # Poll page URL to detect when user logs in
+                    
+                    if SHOPEE_USERNAME and SHOPEE_PASSWORD:
+                        log.info("SHOPEE_USERNAME and SHOPEE_PASSWORD found in .env! Attempting auto-login...")
+                        try:
+                            # Wait for login fields to be visible
+                            await page.wait_for_selector('input[type="text"], input[name="loginKey"]', timeout=10000)
+                            user_input = page.locator('input[type="text"], input[name="loginKey"]').first
+                            pass_input = page.locator('input[type="password"], input[name="password"]').first
+                            login_btn = page.locator('button:has-text("Log In"), button:has-text("Log in"), button:has-text("Login")').first
+                            
+                            if await user_input.is_visible() and await pass_input.is_visible():
+                                await user_input.fill(SHOPEE_USERNAME)
+                                await page.wait_for_timeout(1000)
+                                await pass_input.fill(SHOPEE_PASSWORD)
+                                await page.wait_for_timeout(1000)
+                                await login_btn.click()
+                                log.info("Auto-login submitted! Waiting to see if OTP/Captcha is required...")
+                                await page.wait_for_timeout(5000)
+                        except Exception as e:
+                            log.error("Auto-login attempt failed (maybe UI changed or already logged in): %s", e)
+
+                    # Poll page URL to detect when user logs in (or solves Captcha/OTP if auto-login was partially successful)
                     login_detected = False
                     for _ in range(120): # 120 * 5s = 600s = 10 minutes
                         if shutdown_event.is_set():
@@ -264,12 +285,8 @@ async def run_bot():
                             await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
                             await page.wait_for_timeout(3000)
                             if ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower():
-                                log.error("Still not logged in. Waiting for user login...")
-                                try:
-                                    await asyncio.wait_for(shutdown_event.wait(), timeout=60)
-                                except asyncio.TimeoutError:
-                                    pass
-                                continue
+                                log.error("Still not logged in. Breaking out to main loop for auto-login sequence...")
+                                break
     
                         # Scheduled page reload has been removed by user request
     
