@@ -132,24 +132,34 @@ async def run_bot():
                     )
                     
                     if SHOPEE_USERNAME and SHOPEE_PASSWORD:
-                        log.info("SHOPEE_USERNAME and SHOPEE_PASSWORD found in .env! Attempting auto-login...")
+                        import random
+                        delay_seconds = random.randint(300, 420)
+                        log.info("SHOPEE_USERNAME and SHOPEE_PASSWORD found! Menunggu jeda %d detik (5-7 menit) sebelum auto-login...", delay_seconds)
+                        
                         try:
-                            # Wait for login fields to be visible
-                            await page.wait_for_selector('input[type="text"], input[name="loginKey"]', timeout=10000)
-                            user_input = page.locator('input[type="text"], input[name="loginKey"]').first
-                            pass_input = page.locator('input[type="password"], input[name="password"]').first
-                            login_btn = page.locator('button:has-text("Log In"), button:has-text("Log in"), button:has-text("Login")').first
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=delay_seconds)
+                        except asyncio.TimeoutError:
+                            pass
                             
-                            if await user_input.is_visible() and await pass_input.is_visible():
-                                await user_input.fill(SHOPEE_USERNAME)
-                                await page.wait_for_timeout(1000)
-                                await pass_input.fill(SHOPEE_PASSWORD)
-                                await page.wait_for_timeout(1000)
-                                await login_btn.click()
-                                log.info("Auto-login submitted! Waiting to see if OTP/Captcha is required...")
-                                await page.wait_for_timeout(5000)
-                        except Exception as e:
-                            log.error("Auto-login attempt failed (maybe UI changed or already logged in): %s", e)
+                        if not shutdown_event.is_set() and ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower():
+                            log.info("Memulai proses auto-login setelah jeda...")
+                            try:
+                                # Wait for login fields to be visible
+                                await page.wait_for_selector('input[type="text"], input[name="loginKey"]', timeout=10000)
+                                user_input = page.locator('input[type="text"], input[name="loginKey"]').first
+                                pass_input = page.locator('input[type="password"], input[name="password"]').first
+                                login_btn = page.locator('button:has-text("Log In"), button:has-text("Log in"), button:has-text("Login")').first
+                                
+                                if await user_input.is_visible() and await pass_input.is_visible():
+                                    await user_input.fill(SHOPEE_USERNAME)
+                                    await page.wait_for_timeout(1000)
+                                    await pass_input.fill(SHOPEE_PASSWORD)
+                                    await page.wait_for_timeout(1000)
+                                    await login_btn.click()
+                                    log.info("Auto-login submitted! Waiting to see if OTP/Captcha is required...")
+                                    await page.wait_for_timeout(5000)
+                            except Exception as e:
+                                log.error("Auto-login attempt failed (maybe UI changed or already logged in): %s", e)
 
                     # Poll page URL to detect when user logs in (or solves Captcha/OTP if auto-login was partially successful)
                     login_detected = False
