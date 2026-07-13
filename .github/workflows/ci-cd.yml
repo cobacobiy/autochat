@@ -133,6 +133,8 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SHOPEE_USERNAME: ${{ secrets.SHOPEE_USERNAME }}
+          SHOPEE_PASSWORD: ${{ secrets.SHOPEE_PASSWORD }}
           AI_PROVIDER: "gemini"
         run: |
           import os
@@ -166,6 +168,8 @@ jobs:
               "-e", "AI_PROVIDER=" + os.environ.get("AI_PROVIDER", "ollama"),
               "-e", "OLLAMA_URL=http://172.17.0.1:11434",
               "-e", "GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", ""),
+              "-e", "SHOPEE_USERNAME=" + os.environ.get("SHOPEE_USERNAME", ""),
+              "-e", "SHOPEE_PASSWORD=" + os.environ.get("SHOPEE_PASSWORD", ""),
               "-v", "shopee-bot-profile-preview:/data/shopee-profile",
               "-v", "shopee-bot-logs-preview:/data/logs",
               "-v", f"{wk}/unanswered_questions.txt:/app/unanswered_questions.txt",
