@@ -51,6 +51,42 @@ services:
         limits:
           memory: 2g
 
+  # ==========================================================
+  # --- CONTOH: BOT KEDUA (Hapus tanda '#' untuk mengaktifkan)
+  # ==========================================================
+  # shopee-bot-2:
+  #   image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
+  #   container_name: shopee-bot-2
+  #   shm_size: 2gb
+  #   restart: unless-stopped
+  #   environment:
+  #     - HEADLESS=false
+  #     - PROFILE_DIR=/data/shopee-profile
+  #     - POLL_INTERVAL=5
+  #     - OLLAMA_URL=http://ollama:11434
+  #     - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+  #     - AI_PROVIDER=${AI_PROVIDER:-}
+  #     - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+  #     - OLLAMA_MODEL=qwen2.5:3b
+  #     - UNANSWERED_PATH=/app/unanswered_questions.txt
+  #     - TZ=Asia/Jakarta
+  #     - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+  #     # BISA DIISI MANUAL AKUN KEDUA:
+  #     # - SHOPEE_USERNAME=akun_kedua_saya
+  #     # - SHOPEE_PASSWORD=password_kedua
+  #   volumes:
+  #     - shopee-bot-profile-2:/data/shopee-profile  # HARUS BEDA DENGAN BOT 1
+  #     - shopee-bot-logs-2:/data/logs               # HARUS BEDA DENGAN BOT 1
+  #     - ./store_knowledge.txt:/app/store_knowledge.txt
+  #     - ./unanswered_questions.txt:/app/unanswered_questions.txt
+  #   ports:
+  #     - "6082:6080" # Akses VNC Bot 2 di http://localhost:6082
+  #     - "7082:8080"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2g
+
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -78,4 +114,7 @@ volumes:
   shopee-bot-profile:
   shopee-bot-logs:
   ollama-data:
-
+  
+  # --- UNTUK BOT KEDUA ---
+  # shopee-bot-profile-2:
+  # shopee-bot-logs-2:
