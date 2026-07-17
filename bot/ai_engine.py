@@ -134,12 +134,13 @@ async def get_ai_reply(buyer_message: str) -> str:
     system_prompt = build_system_prompt()
     try:
         reply = await _call_ai_api(system_prompt, buyer_message)
-        if reply:
+        if reply and reply != "TIDAK TAHU":
             return reply
     except Exception as e:
         log.warning("All AI provider attempts failed: %s", e)
             
-    return "TIDAK TAHU"
+    # Fallback to local regex-based auto reply if AI fails or returns TIDAK TAHU
+    return get_auto_reply(buyer_message)
 
 def _clean_ai_reply(reply: str) -> str:
     reply = reply.strip()
