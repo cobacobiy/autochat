@@ -79,6 +79,27 @@ docker compose up -d
 ```
 *Gunakan web browser (melalui port `6080` yang diatur di docker-compose) untuk masuk via noVNC dan melakukan login Shopee manual pertama kali.*
 
+### Menjalankan Multi-Bot (Lebih dari 1 Toko)
+Jika Anda memiliki beberapa toko Shopee, Anda dapat menjalankan bot secara paralel dengan menduplikasi service di `docker-compose.yml`. Pastikan setiap bot memiliki volume dan port VNC yang berbeda. Contoh:
+```yaml
+services:
+  bot-toko-a:
+    build: ./bot
+    volumes:
+      - bot-toko-a-profile:/data/shopee-profile
+      - bot-toko-a-logs:/data/logs
+    ports:
+      - "6080:6080"
+  bot-toko-b:
+    build: ./bot
+    volumes:
+      - bot-toko-b-profile:/data/shopee-profile
+      - bot-toko-b-logs:/data/logs
+    ports:
+      - "6081:6080"
+```
+Login ke VNC secara terpisah (port 6080 untuk Toko A, 6081 untuk Toko B) untuk setup awal.
+
 ### Menggunakan GPU (Docker Passthrough)
 Secara default, container Docker sudah dikonfigurasi untuk menggunakan GPU NVIDIA jika tersedia (lihat `docker-compose.yml` baris 26-32). Pastikan Anda sudah menginstal [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Cek dengan menjalankan `nvidia-smi`.
 

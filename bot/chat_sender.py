@@ -1,9 +1,22 @@
 import logging
+from bot.config import FORCE_RELOAD
 from bot.utils import do_human_delay
+from typing import Union
+from playwright.async_api import Page
 
 log = logging.getLogger(__name__)
 
-async def send_reply(page, reply_text: str, username: str) -> bool:
+async def send_reply(page: Page, reply_text: str, username: str) -> Union[bool, int]:
+    """Kirim balasan chat ke pembeli.
+    
+    Args:
+        page: Playwright Page instance.
+        reply_text: Teks balasan.
+        username: Username pembeli.
+        
+    Returns:
+        True jika sukses, False jika gagal (skip), atau FORCE_RELOAD (-1) jika terhalang captcha.
+    """
     input_box = None
     input_sel_used = "none"
 
@@ -61,7 +74,7 @@ async def send_reply(page, reply_text: str, username: str) -> bool:
     except Exception as e:
         log.warning("Gagal mengklik kotak input (mungkin terhalang elemen lain / CAPTCHA): %s. Menunggu jeda manusiawi sebelum reload...", e)
         await do_human_delay(page, 3000, 7000)
-        return -1
+        return FORCE_RELOAD
 
     await page.wait_for_timeout(300)
 
@@ -94,4 +107,4 @@ async def send_reply(page, reply_text: str, username: str) -> bool:
             log.warning("Send button click failed: %s", send_err)
     else:
         log.info("=== REPLY RESULT: SUCCESS (sent via Enter) ===")
-    return True
+    return True

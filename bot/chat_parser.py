@@ -1,9 +1,10 @@
 import logging
+from playwright.async_api import Page
 from bot.config import IS_SELLER_JS, SHOPEE_CHAT_URL
 
 log = logging.getLogger(__name__)
 
-async def read_riwayat_chat(page) -> str:
+async def read_riwayat_chat(page: Page) -> str:
    try:
        history_link_selectors = [
            "text=Lihat Semua Riwayat Chat",
@@ -170,7 +171,7 @@ async def read_riwayat_chat(page) -> str:
        return ""
 
 
-async def extract_chat_history(page) -> list:
+async def extract_chat_history(page: Page) -> list[dict]:
     chat_history = await page.evaluate(r'''() => {
         ''' + IS_SELLER_JS + r'''
         const messageContainers = [...document.querySelectorAll('div')].filter(el => {
@@ -242,4 +243,4 @@ async def extract_chat_history(page) -> list:
                 chat_history.append({"text": msg_text, "isSeller": bool(is_seller)})
             except Exception as e:
                 log.warning("Gagal memproses pesan fallback: %s", e)
-    return chat_history
+    return chat_history

@@ -1,11 +1,19 @@
 import logging
+from playwright.async_api import Page
 from bot.state import bot_state
 from bot.utils import do_human_delay
 
 log = logging.getLogger(__name__)
 
-async def setup_chat_view(page) -> bool:
-    """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil."""
+async def setup_chat_view(page: Page) -> bool:
+    """Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil.
+    
+    Args:
+        page: Playwright Page instance.
+        
+    Returns:
+        bool: True jika berhasil, False jika perlu mengulang.
+    """
     
     # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
     try:
@@ -124,4 +132,4 @@ async def setup_chat_view(page) -> bool:
         # Jangan set bot_state.has_setup_tabs = True agar di iterasi berikutnya dicoba lagi
         return False
         
-    return True
+    return True

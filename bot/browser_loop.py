@@ -4,11 +4,16 @@ import os
 import signal
 import subprocess
 import time
+import random
 from datetime import datetime
 
 from playwright.async_api import async_playwright
 
-from bot.config import LOG_DIR, PROFILE_DIR, SHOPEE_CHAT_URL, POLL_INTERVAL_SECONDS, MAX_CACHE_SIZE, SHOPEE_USERNAME, SHOPEE_PASSWORD
+from bot.config import (
+    LOG_DIR, PROFILE_DIR, SHOPEE_CHAT_URL, POLL_INTERVAL_SECONDS, MAX_CACHE_SIZE, 
+    SHOPEE_USERNAME, SHOPEE_PASSWORD, BROWSER_LIFETIME_SECONDS, KNOWLEDGE_RELOAD_CYCLES,
+    CACHE_EXPIRY_SECONDS, HEARTBEAT_CYCLES
+)
 from bot.state import bot_state
 from bot.knowledge import reload_knowledge
 from bot.utils import do_human_delay, cleanup_old_screenshots
@@ -97,9 +102,13 @@ async def run_bot():
                     await asyncio.wait_for(shutdown_event.wait(), timeout=5)
                     log.error("Restarting script to ensure clean Playwright state...")
                     break
-                # Anti-bot stealth: override navigator.webdriver
+                # Anti-bot stealth: override navigator properties
                 await context.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['id-ID', 'id', 'en-US', 'en'] });
+                    window.chrome = { runtime: {} };
+                    if (navigator.__proto__.webdriver !== undefined) delete navigator.__proto__.webdriver;
                 """)
 
                 page = context.pages[0] if context.pages else await context.new_page()
@@ -132,7 +141,6 @@ async def run_bot():
                     )
                     
                     if SHOPEE_USERNAME and SHOPEE_PASSWORD:
-                        import random
                         delay_seconds = random.randint(300, 420)
                         log.info("SHOPEE_USERNAME and SHOPEE_PASSWORD found! Menunggu jeda %d detik (5-7 menit) sebelum auto-login...", delay_seconds)
                         
@@ -189,8 +197,8 @@ async def run_bot():
 
                 log.info("Logged in — entering polling loop (every %ds)", POLL_INTERVAL_SECONDS)
 
-                # Define browser lifetime (e.g. 6 hours = 21600 seconds)
-                browser_lifetime_limit = 21600
+                # Define browser lifetime
+                browser_lifetime_limit = BROWSER_LIFETIME_SECONDS
 
                 while not shutdown_event.is_set():
                     try:
@@ -215,19 +223,19 @@ async def run_bot():
     
                         cycle_count += 1
                         
-                        # Heartbeat logging every ~5 minutes
-                        if cycle_count % 60 == 0:
+                        # Heartbeat logging
+                        if cycle_count % HEARTBEAT_CYCLES == 0:
                             log.info("💓 Bot heartbeat: %d cycles completed, bot_state.replied_cache size: %d", 
                                      cycle_count, len(bot_state.replied_cache))
     
-                        # Hot reload store_knowledge.txt every ~10 minutes
-                        if cycle_count % 120 == 0:
+                        # Hot reload store_knowledge.txt
+                        if cycle_count % KNOWLEDGE_RELOAD_CYCLES == 0:
                             reload_knowledge()
                             cleanup_old_screenshots(LOG_DIR, 24)
     
-                        # Clean up expired bot_state.replied_cache items (> 24 hours)
+                        # Clean up expired bot_state.replied_cache items
                         now = time.time()
-                        expired = [k for k, v in bot_state.replied_cache.items() if now - v > 86400]
+                        expired = [k for k, v in bot_state.replied_cache.items() if now - v > CACHE_EXPIRY_SECONDS]
                         for k in expired:
                             del bot_state.replied_cache[k]
     
@@ -383,4 +391,4 @@ async def run_bot():
                 except asyncio.TimeoutError:
                     pass
 
-        log.info("Graceful shutdown complete.")
+        log.info("Graceful shutdown complete.")

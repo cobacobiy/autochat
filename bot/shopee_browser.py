@@ -9,7 +9,8 @@ from playwright.async_api import Page
 from bot.config import (
     AUTO_REPLIES, DEFAULT_REPLY, LOG_DIR,
     SKIP_MESSAGES, GET_CHAT_ITEMS_JS,
-    UNANSWERED_PATH, MAX_DAILY_REPLIES
+    UNANSWERED_PATH, MAX_DAILY_REPLIES,
+    FORCE_RELOAD, MAX_CHAT_SCAN_ATTEMPTS
 )
 from bot.state import bot_state
 from bot.utils import do_human_delay, is_assistant_ai_msg
@@ -38,7 +39,7 @@ async def handle_unread_chats(page: Page) -> int:
         if not setup_success:
             return 0
 
-        max_attempts = 30
+        max_attempts = MAX_CHAT_SCAN_ATTEMPTS
         for attempt in range(max_attempts):
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
@@ -46,12 +47,12 @@ async def handle_unread_chats(page: Page) -> int:
                     coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
                     if await coba_lagi_btn.is_visible(timeout=1000):
                         log.warning("🚨 Popup 'Coba Lagi' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
-                        return -1
+                        return FORCE_RELOAD
 
                     html_content = (await page.content()).lower()
                     if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
                         log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
-                        return -1 # Return -1 to signal main loop to reload
+                        return FORCE_RELOAD # Return FORCE_RELOAD to signal main loop to reload
                 except Exception:
                     pass
                 
@@ -177,7 +178,7 @@ async def handle_unread_chats(page: Page) -> int:
                     except Exception as fallback_err:
                         log.error("Gagal mengklik chat dengan fallback (mungkin terhalang CAPTCHA): %s. Menunggu jeda manusiawi sebelum reload...", fallback_err)
                         await do_human_delay(page, 3000, 7000)
-                        return -1
+                        return FORCE_RELOAD
                 await page.wait_for_timeout(2000)
 
                 try:
@@ -385,8 +386,8 @@ async def handle_unread_chats(page: Page) -> int:
                 log.info("Reply text: %s", reply_text[:80])
 
                 reply_status = await send_reply(page, reply_text, username)
-                if reply_status == -1:
-                    return -1
+                if reply_status == FORCE_RELOAD:
+                    return FORCE_RELOAD
                 elif reply_status:
                     if username not in bot_state.sent_messages:
                         bot_state.sent_messages[username] = set()
@@ -412,4 +413,4 @@ async def handle_unread_chats(page: Page) -> int:
         if "target closed" in exc_msg or "browser closed" in exc_msg or "context closed" in exc_msg or "connection closed" in exc_msg or "not attached" in exc_msg:
             raise exc
 
-    return processed
+    return processed

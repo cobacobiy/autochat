@@ -3,17 +3,24 @@ import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from bot.state import bot_state
-from bot.config import AI_PROVIDER, OLLAMA_MODEL, GEMINI_MODEL
+from bot.config import AI_PROVIDER, OLLAMA_MODEL, GEMINI_MODEL, ANTHROPIC_MODEL
 
 BOT_START_TIME = time.time()
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        def _get_current_model():
+            if AI_PROVIDER == "ollama":
+                return OLLAMA_MODEL
+            if AI_PROVIDER == "gemini":
+                return GEMINI_MODEL
+            return ANTHROPIC_MODEL
+            
         status = {
             "status": "ok",
             "uptime_seconds": int(time.time() - BOT_START_TIME),
             "ai_provider": AI_PROVIDER,
-            "ai_model": OLLAMA_MODEL if AI_PROVIDER == "ollama" else GEMINI_MODEL,
+            "ai_model": _get_current_model(),
             "knowledge_loaded": bool(bot_state.knowledge_base),
             "knowledge_entries": len(bot_state.knowledge_answers),
             "daily_replies": bot_state.daily_reply_counter,

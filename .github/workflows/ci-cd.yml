@@ -128,7 +128,7 @@ jobs:
           python-version: '3.11'
 
       - name: Deploy Preview Container
-        shell: python
+        shell: bash
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
@@ -137,49 +137,44 @@ jobs:
           SHOPEE_PASSWORD: ${{ secrets.SHOPEE_PASSWORD }}
           AI_PROVIDER: "ollama"
         run: |
-          import os
-          import subprocess
+          echo "Deploying PR #${{ github.event.pull_request.number }} preview..."
           
-          print("Deploying PR #${{ github.event.pull_request.number }} preview...")
+          docker compose up -d ollama ollama-init
+          docker rm -f shopee-bot-preview || true
           
-          subprocess.run(["docker", "compose", "up", "-d", "ollama", "ollama-init"], check=True)
-          subprocess.run(["docker", "rm", "-f", "shopee-bot-preview"], check=False)
+          DOCKER_USER=${DOCKER_USERNAME:-local}
+          IMAGE="${DOCKER_USER}/shopee-autochat-bot:${IMAGE_TAG}"
           
-          docker_user = os.environ.get("DOCKER_USERNAME") or "local"
-          image = f"{docker_user}/shopee-autochat-bot:{os.environ.get('IMAGE_TAG')}"
+          if [ "$DOCKER_USER" = "local" ]; then
+              echo "Building $IMAGE locally for preview because no Docker Hub registry is used..."
+              docker build -t "$IMAGE" ./bot
+          else
+              echo "Pulling $IMAGE from registry..."
+              docker pull "$IMAGE"
+          fi
           
-          if docker_user == "local":
-              print(f"Building {image} locally for preview because no Docker Hub registry is used...")
-              subprocess.run(["docker", "build", "-t", image, "./bot"], check=True)
-          else:
-              print(f"Pulling {image} from registry...")
-              subprocess.run(["docker", "pull", image], check=True)
-          
-          wk = os.environ.get("GITHUB_WORKSPACE")
-          cmd = [
-              "docker", "run", "-d",
-              "--name", "shopee-bot-preview",
-              "--network", "autochat_default",
-              "--restart", "unless-stopped",
-              "--shm-size=2g",
-              "-e", "HEADLESS=false",
-              "-e", "POLL_INTERVAL=10",
-              "-e", "VNC_PASSWORD=previewpass",
-              "-e", "AI_PROVIDER=" + os.environ.get("AI_PROVIDER", "ollama"),
-              "-e", "OLLAMA_URL=http://172.17.0.1:11434",
-              "-e", "GEMINI_API_KEY=" + os.environ.get("GEMINI_API_KEY", ""),
-              "-e", "SHOPEE_USERNAME=" + os.environ.get("SHOPEE_USERNAME", ""),
-              "-e", "SHOPEE_PASSWORD=" + os.environ.get("SHOPEE_PASSWORD", ""),
-              "-v", "shopee-bot-profile-preview:/data/shopee-profile",
-              "-v", "shopee-bot-logs-preview:/data/logs",
-              "-v", f"{wk}/unanswered_questions.txt:/app/unanswered_questions.txt",
-              "-v", f"{wk}/store_knowledge.txt:/app/store_knowledge.txt",
-              "-p", "6081:6080",
-              "-p", "7081:8080",
-              image
-          ]
-          subprocess.run(cmd, check=True)
-          print("\nPreview berhasil di-deploy!\nnoVNC: http://<SERVER_IP>:6081")
+          docker run -d \
+              --name shopee-bot-preview \
+              --network autochat_default \
+              --restart unless-stopped \
+              --shm-size=2g \
+              -e HEADLESS=false \
+              -e POLL_INTERVAL=10 \
+              -e VNC_PASSWORD=previewpass \
+              -e AI_PROVIDER="${AI_PROVIDER:-ollama}" \
+              -e OLLAMA_URL=http://172.17.0.1:11434 \
+              -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+              -e SHOPEE_USERNAME="$SHOPEE_USERNAME" \
+              -e SHOPEE_PASSWORD="$SHOPEE_PASSWORD" \
+              -v shopee-bot-profile-preview:/data/shopee-profile \
+              -v shopee-bot-logs-preview:/data/logs \
+              -v "${GITHUB_WORKSPACE}/unanswered_questions.txt:/app/unanswered_questions.txt" \
+              -v "${GITHUB_WORKSPACE}/store_knowledge.txt:/app/store_knowledge.txt" \
+              -p 6081:6080 \
+              -p 7081:8080 \
+              "$IMAGE"
+              
+          echo -e "\nPreview berhasil di-deploy!\nnoVNC: http://<SERVER_IP>:6081"
 
   # ============================================
   # Cleanup Preview Container
