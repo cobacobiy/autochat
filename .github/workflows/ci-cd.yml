@@ -135,7 +135,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHOPEE_USERNAME: ${{ secrets.SHOPEE_USERNAME }}
           SHOPEE_PASSWORD: ${{ secrets.SHOPEE_PASSWORD }}
-          AI_PROVIDER: "gemini"
+          AI_PROVIDER: "ollama"
         run: |
           import os
           import subprocess
