@@ -310,6 +310,25 @@ async def handle_unread_chats(page: Page) -> int:
                     bot_state.replied_cache[cache_key] = time.time()
                     continue
 
+                # Deteksi pesan pembatalan/cancel/refund — serahkan ke admin manusia
+                _cancel_keywords = [
+                    "cancel", "pembatalan", "batalkan", "batal", "dibatalkan",
+                    "mau batal", "minta batal", "tolong batal", "refund",
+                    "pengembalian dana", "kembalikan dana", "uang kembali",
+                    "retur", "return", "mau cancel",
+                ]
+                if has_real_buyer_message and any(kw in buyer_msg_lower for kw in _cancel_keywords):
+                    log.warning("🚫 Pesan mengandung kata pembatalan/cancel dari '%s': %s. Diserahkan ke admin.", username, buyer_message[:80])
+                    try:
+                        clean_msg = re.sub(r'\d{1,2}:\d{2}$', '', buyer_message).strip()
+                        with open(UNANSWERED_PATH, "a", encoding="utf-8") as f:
+                            f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {clean_msg}\nJ: [PEMBATALAN - Diserahkan ke admin]\n")
+                    except Exception as e:
+                        log.error("Gagal mencatat pembatalan: %s", e)
+                    bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.daily_unanswered_count += 1
+                    continue
+
                 if force_default_reply:
                     reply_text = DEFAULT_REPLY
                 else:
