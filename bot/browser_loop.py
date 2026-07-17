@@ -316,11 +316,13 @@ async def run_bot():
                             log.warning("🔄 Force reload dipicu oleh popup error di tengah pembacaan chat! Menunggu jeda manusiawi...")
                             await do_human_delay(page, 3000, 7000)
                             try:
-                                await page.reload(wait_until="domcontentloaded", timeout=30000)
+                                await page.goto("https://seller.shopee.co.id/", wait_until="domcontentloaded", timeout=30000)
+                                await page.wait_for_timeout(3000)
+                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
                                 await page.wait_for_timeout(5000)
                                 bot_state.has_setup_tabs = False
                             except Exception as e:
-                                log.error("Gagal reload: %s", e)
+                                log.error("Gagal navigasi ulang (Force Reload): %s", e)
                             continue
                             
                         if count:

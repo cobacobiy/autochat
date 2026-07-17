@@ -44,15 +44,29 @@ async def handle_unread_chats(page: Page) -> int:
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
-                    coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
+                    coba_lagi_btn = page.locator("button", has_text=re.compile("Coba Lagi|Try Again", re.IGNORECASE)).first
+                    if not await coba_lagi_btn.is_visible(timeout=1000):
+                        coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
+                    
                     if await coba_lagi_btn.is_visible(timeout=1000):
-                        log.warning("🚨 Popup 'Coba Lagi' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
-                        return FORCE_RELOAD
-
-                    html_content = (await page.content()).lower()
-                    if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-                        log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
-                        return FORCE_RELOAD # Return FORCE_RELOAD to signal main loop to reload
+                        log.warning("🚨 Popup 'Coba Lagi' terdeteksi! Mencoba mengklik tombol...")
+                        try:
+                            await coba_lagi_btn.click(timeout=3000)
+                            await page.wait_for_timeout(3000)
+                        except Exception as e:
+                            log.warning("Gagal mengklik tombol Coba Lagi: %s", e)
+                            
+                        if await coba_lagi_btn.is_visible(timeout=1000):
+                            log.error("Tombol Coba Lagi diklik tapi popup tidak hilang. Force reload...")
+                            return FORCE_RELOAD
+                        else:
+                            log.info("Popup hilang setelah diklik. Melanjutkan proses...")
+                            continue # Mulai ulang loop scan chat
+                    else:
+                        html_content = (await page.content()).lower()
+                        if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
+                            log.warning("🚨 Popup 'Terjadi Kesalahan' terdeteksi dari HTML (tombol tidak terlihat)! Membatalkan sesi ini untuk force reload...")
+                            return FORCE_RELOAD
                 except Exception:
                     pass
                 
