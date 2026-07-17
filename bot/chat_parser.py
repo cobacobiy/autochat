@@ -202,9 +202,9 @@ async def extract_chat_history(page) -> list:
             // Jika ini adalah kotak preview riwayat, ambil isinya dan perlakukan sebagai pesan pembeli
             let is_seller_msg = isSeller(b, bestContainer);
             if (text.includes('Lihat Semua Riwayat Chat') || text.includes('View All Chat History') || (b.closest && b.closest('[class*="history"], [class*="riwayat"]'))) {
-                text = text.replace('Lihat Semua Riwayat Chat', '').replace('View All Chat History', '').replace('Riwayat Chat', '').replace('Chat History', '').trim();
+                text = "[RIWAYAT_CHAT]" + text.replace('Lihat Semua Riwayat Chat', '').replace('View All Chat History', '').replace('Riwayat Chat', '').replace('Chat History', '').trim();
                 is_seller_msg = false; // Anggap sebagai pesan pembeli agar dijawab
-                if (!text) continue;
+                if (!text || text === "[RIWAYAT_CHAT]") continue;
             }
             
             history.push({ text: text, isSeller: is_seller_msg });

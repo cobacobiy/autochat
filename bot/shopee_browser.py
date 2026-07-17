@@ -268,15 +268,21 @@ async def handle_unread_chats(page: Page) -> int:
                 buyer_message = ""
                 found_buyer_msg = False
                 for msg in reversed(chat_history):
-                    if not msg["isSeller"] and not is_assistant_ai_msg(msg["text"]):
+                    if msg["text"].startswith("[RIWAYAT_CHAT]") and riwayat_buyer_message:
+                        buyer_message = riwayat_buyer_message
+                        found_buyer_msg = True
+                        log.info("Using buyer message from Riwayat Chat box at bottom of DOM: %s", buyer_message[:100])
+                        break
+                    elif not msg["isSeller"] and not is_assistant_ai_msg(msg["text"]):
                         buyer_message = msg["text"]
                         found_buyer_msg = True
                         break
                 
+                # Fallback if DOM position was weird
                 if not found_buyer_msg and riwayat_buyer_message:
                     buyer_message = riwayat_buyer_message
                     found_buyer_msg = True
-                    log.info("Using buyer message from Riwayat Chat: %s", buyer_message[:100])
+                    log.info("Using buyer message from Riwayat Chat as fallback: %s", buyer_message[:100])
                 
                 force_default_reply = False
                 if not found_buyer_msg:
