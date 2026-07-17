@@ -252,7 +252,7 @@ async def run_bot():
                             
                             # Cek popup error UI Shopee ("Terjadi Kesalahan" / "An Error Occurred")
                             try:
-                                coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again'), text=Coba Lagi, text=Try Again").first
+                                coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
                                 if await coba_lagi_btn.is_visible(timeout=1000):
                                     log.warning("🚨 Muncul popup error dari Shopee. Menandai untuk reload...")
                                     has_crash_text = True

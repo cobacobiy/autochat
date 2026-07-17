@@ -9,7 +9,7 @@ async def setup_chat_view(page) -> bool:
     
     # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
     try:
-        reload_btn = page.locator("text=Klik untuk memuat ulang, text=Click to reload").first
+        reload_btn = page.locator("text=/Klik untuk memuat ulang|Click to reload/i").first
         if await reload_btn.is_visible(timeout=1000):
             log.info("Detected reload button. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)
@@ -18,7 +18,7 @@ async def setup_chat_view(page) -> bool:
             bot_state.has_setup_tabs = False
             return False
             
-        coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again'), text=Coba Lagi, text=Try Again").first
+        coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
         if await coba_lagi_btn.is_visible(timeout=1000):
             log.info("Detected error modal. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)
@@ -87,14 +87,14 @@ async def setup_chat_view(page) -> bool:
     # 4. Jika belum tampil (misal baru login), buka tab Chat Pembeli / Chat with Buyer
     try:
         # ID: Chat Penjual -> Chat Pembeli | EN: Chat with Seller -> Chat with Buyer
-        trigger_penjual = page.locator("text=Chat Penjual, text=Chat with Seller").first
-        trigger_pembeli = page.locator("text=Chat Pembeli, text=Chat with Buyer").first
+        trigger_penjual = page.locator("text=/Chat Penjual|Chat with Seller/i").first
+        trigger_pembeli = page.locator("text=/Chat Pembeli|Chat with Buyer/i").first
         if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
             log.info("Switching to 'Chat Pembeli / Chat with Buyer'...")
             await do_human_delay(page, 1500, 3000)
             await trigger_penjual.click()
             await do_human_delay(page, 1500, 3000)
-            pembeli_btn = page.locator("text=Chat Pembeli, text=Chat with Buyer").last
+            pembeli_btn = page.locator("text=/Chat Pembeli|Chat with Buyer/i").last
             await pembeli_btn.click()
             await page.wait_for_timeout(2000)
     except Exception:
@@ -102,7 +102,7 @@ async def setup_chat_view(page) -> bool:
 
     # 5. Pastikan tab Semua Chat / All Chats dan Semua Pembeli / All Buyers diklik sekali
     try:
-        semua_chat = page.locator("text=Semua Chat, text=All Chats").first
+        semua_chat = page.locator("text=/Semua Chat|All Chats/i").first
         # Tunggu sampai visible agar tidak terlewat setelah reload
         await semua_chat.wait_for(state="visible", timeout=10000)
         
@@ -113,7 +113,7 @@ async def setup_chat_view(page) -> bool:
             await semua_chat.click()
             await page.wait_for_timeout(2000)
             
-            semua_pembeli = page.locator("text=Semua Pembeli, text=All Buyers").first
+            semua_pembeli = page.locator("text=/Semua Pembeli|All Buyers/i").first
             if await semua_pembeli.is_visible():
                 await do_human_delay(page, 1500, 3500)
                 await semua_pembeli.click()

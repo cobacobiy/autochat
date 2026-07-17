@@ -43,7 +43,7 @@ async def handle_unread_chats(page: Page) -> int:
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
-                    coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
+                    coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
                     if await coba_lagi_btn.is_visible(timeout=1000):
                         log.warning("🚨 Popup 'Coba Lagi' terdeteksi saat mencoba membaca chat! Membatalkan sesi ini untuk force reload...")
                         return -1
@@ -198,7 +198,7 @@ async def handle_unread_chats(page: Page) -> int:
                 # Kita akan murni mengandalkan history chat yang sudah tampil di layar (DOM utama).
                 riwayat_buyer_message = ""
                 try:
-                    riwayat_loc = page.locator("text='Lihat Semua Riwayat Chat'")
+                    riwayat_loc = page.locator("text=/Lihat Semua Riwayat Chat|View All Chat History/i")
                     if await riwayat_loc.count() > 0:
                         parent_text = await riwayat_loc.first.locator("xpath=..").inner_text()
                         for line in reversed(parent_text.split('\n')):
