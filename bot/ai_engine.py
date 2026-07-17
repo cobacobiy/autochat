@@ -26,7 +26,7 @@ def build_system_prompt() -> str:
         f"=== KNOWLEDGE BASE ===\n{bot_state.knowledge_base}\n====================\n\n"
         "Aturan Menjawab:\n"
         "1. Jawab pertanyaan spesifik mengenai produk berdasarkan [KNOWLEDGE BASE].\n"
-        "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Pembeli saat checkout ya kak 😊\"\n"
+        "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Penjual saat checkout ya kak 😊\"\n"
         "3. Jika pembeli meminta dikirim cepat (buru-buru/kapan dikirim), jawab: \"Pesanan kakak akan segera kami proses dan kirimkan sesuai antrean ya kak, mohon ditunggu 😊\"\n"
         "4. DILARANG KERAS membuat obrolan basa-basi yang panjang atau mengarang jawaban. Jika pembeli sekadar menyapa (halo/hi) tanpa bertanya, jawab SINGKAT: 'Halo kak! Ada yang bisa dibantu?'.\n"
         "5. Jika pembeli HANYA mengucapkan terima kasih, doa, pujian, atau konfirmasi pesanan (contoh: 'makasih', 'sukses selalu', 'oke tolong kirim'), Anda WAJIB menjawab HANYA dengan kata: SKIP\n"

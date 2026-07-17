@@ -197,6 +197,8 @@ async def extract_chat_history(page) -> list:
         const history = [];
         for (const b of bubbles) {
             let text = (b.textContent || '').trim();
+            // Remove trailing timestamps like "23:04" or " 23:04" that Shopee UI embeds
+            text = text.replace(/\s*\d{1,2}:\d{2}$/, '').trim();
             if (!text) continue;
             
             // Jika ini adalah kotak preview riwayat, ambil isinya dan perlakukan sebagai pesan pembeli
