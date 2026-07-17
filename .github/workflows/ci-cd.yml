@@ -129,8 +129,8 @@ jobs:
 
       - name: Deploy Preview Container
         # ⚠️ PENTING: Jangan gunakan `shell: bash` di sini! Runner Windows (Local System) tidak mendukung WSL.
-        # Selalu gunakan `shell: pwsh` (PowerShell) atau `shell: python`.
-        shell: pwsh
+        # Selalu gunakan `shell: powershell` (Windows PowerShell) atau `shell: python`.
+        shell: powershell
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
