@@ -26,9 +26,14 @@ def is_assistant_ai_msg(text: str) -> bool:
         "asistent ai" in t or
         "dikirim oleh asisten ai" in t or
         "dikirim oleh asisten" in t or
+        "shop ai assistant" in t or
+        "[shop ai" in t or
+        "sent by ai assistant" in t or
+        "sent by shop ai" in t or
         "auto-reply" in t or
         "auto reply" in t or
         "kami akan segera membalas" in t or
+        "we will reply shortly" in t or
         "variant yg bisa di klik" in t
     )
 

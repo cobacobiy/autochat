@@ -91,7 +91,10 @@ async def handle_unread_chats(page: Page) -> int:
                                 any(reply.lower()[:15] in preview_lower for reply in AUTO_REPLIES.values()) or
                                 DEFAULT_REPLY.lower()[:15] in preview_lower or
                                 "gagal mengirim" in preview_lower or
-                                "tunggu balasan" in preview_lower
+                                "sending failed" in preview_lower or
+                                "failed to send" in preview_lower or
+                                "tunggu balasan" in preview_lower or
+                                "wait for" in preview_lower
                             )
                             
                             # Targetkan chat ini JIKA:
@@ -236,8 +239,8 @@ async def handle_unread_chats(page: Page) -> int:
                 last_msg_text = last_msg["text"]
                 last_msg_is_seller = last_msg["isSeller"]
                 
-                if "gagal mengirim" in last_msg_text.lower() or "tunggu balasan pembeli" in last_msg_text.lower():
-                    log.info("Chat blocked by Shopee (Gagal mengirim chat). Waiting for buyer to reply. Skipping.")
+                if "gagal mengirim" in last_msg_text.lower() or "tunggu balasan pembeli" in last_msg_text.lower() or "sending failed" in last_msg_text.lower() or "failed to send" in last_msg_text.lower() or "wait for the buyer" in last_msg_text.lower():
+                    log.info("Chat blocked by Shopee (Gagal mengirim / Sending failed). Waiting for buyer to reply. Skipping.")
                     continue
 
                 is_assistant_ai = is_assistant_ai_msg(last_msg_text)

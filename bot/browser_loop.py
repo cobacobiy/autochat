@@ -250,16 +250,18 @@ async def run_bot():
                             is_blank = len(body_text) < 50  # Halaman tidak merender DOM sama sekali
                             has_crash_text = "Aw, Snap!" in body_text or "Error code:" in body_text or "STATUS_BREAKPOINT" in body_text
                             
-                            # Cek popup error UI Shopee ("Terjadi Kesalahan")
+                            # Cek popup error UI Shopee ("Terjadi Kesalahan" / "An Error Occurred")
                             try:
-                                coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
+                                coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again'), text=Coba Lagi, text=Try Again").first
                                 if await coba_lagi_btn.is_visible(timeout=1000):
-                                    log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Menandai untuk reload...")
+                                    log.warning("🚨 Muncul popup error dari Shopee. Menandai untuk reload...")
                                     has_crash_text = True
                                 else:
                                     html_content = (await page.content()).lower()
-                                    if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-                                        log.warning("🚨 Muncul popup 'Terjadi Kesalahan' dari Shopee. Menandai untuk reload...")
+                                    has_error = "terjadi kesalahan" in html_content or "an error occurred" in html_content or "something went wrong" in html_content
+                                    has_retry = "coba lagi" in html_content or "try again" in html_content or "memuat halaman" in html_content
+                                    if has_error and has_retry:
+                                        log.warning("🚨 Muncul popup error dari Shopee (HTML). Menandai untuk reload...")
                                         has_crash_text = True
                             except Exception:
                                 pass

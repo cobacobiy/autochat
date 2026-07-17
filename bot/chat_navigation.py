@@ -9,18 +9,18 @@ async def setup_chat_view(page) -> bool:
     
     # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
     try:
-        reload_btn = page.locator("text=Klik untuk memuat ulang").first
+        reload_btn = page.locator("text=Klik untuk memuat ulang, text=Click to reload").first
         if await reload_btn.is_visible(timeout=1000):
-            log.info("Detected 'Klik untuk memuat ulang'. Menunggu jeda manusiawi sebelum reload...")
+            log.info("Detected reload button. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)
             await reload_btn.click()
             await page.wait_for_timeout(3000)
             bot_state.has_setup_tabs = False
             return False
             
-        coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), text=Coba Lagi").first
+        coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again'), text=Coba Lagi, text=Try Again").first
         if await coba_lagi_btn.is_visible(timeout=1000):
-            log.info("Detected 'Coba Lagi' error modal. Menunggu jeda manusiawi sebelum reload...")
+            log.info("Detected error modal. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)
             try:
                 await page.reload(wait_until="domcontentloaded", timeout=30000)
@@ -31,8 +31,10 @@ async def setup_chat_view(page) -> bool:
             return False
 
         html_content = (await page.content()).lower()
-        if "terjadi kesalahan" in html_content and ("coba lagi" in html_content or "memuat halaman" in html_content):
-            log.info("Detected 'Coba Lagi' error modal from HTML content. Menunggu jeda manusiawi sebelum reload...")
+        has_error_id = "terjadi kesalahan" in html_content or "an error occurred" in html_content or "something went wrong" in html_content
+        has_retry = "coba lagi" in html_content or "try again" in html_content or "memuat halaman" in html_content or "reload" in html_content
+        if has_error_id and has_retry:
+            log.info("Detected error modal from HTML content. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)
             try:
                 await page.reload(wait_until="domcontentloaded", timeout=30000)
@@ -54,7 +56,7 @@ async def setup_chat_view(page) -> bool:
         pass
         
     try:
-        close_btn = page.locator("[aria-label='Close'], button:has-text('×'), .close-button").first
+        close_btn = page.locator("[aria-label='Close'], [aria-label='Tutup'], button:has-text('×'), .close-button").first
         if await close_btn.is_visible(timeout=1000):
             await close_btn.click()
     except Exception:
@@ -82,24 +84,26 @@ async def setup_chat_view(page) -> bool:
     except Exception:
         pass
 
-    # 4. Jika belum tampil (misal baru login), buka tab Chat Pembeli
+    # 4. Jika belum tampil (misal baru login), buka tab Chat Pembeli / Chat with Buyer
     try:
-        trigger_penjual = page.locator("text=Chat Penjual").first
-        trigger_pembeli = page.locator("text=Chat Pembeli").first
+        # ID: Chat Penjual -> Chat Pembeli | EN: Chat with Seller -> Chat with Buyer
+        trigger_penjual = page.locator("text=Chat Penjual, text=Chat with Seller").first
+        trigger_pembeli = page.locator("text=Chat Pembeli, text=Chat with Buyer").first
         if await trigger_penjual.is_visible() and not await trigger_pembeli.is_visible():
-            log.info("Switching to 'Chat Pembeli'...")
+            log.info("Switching to 'Chat Pembeli / Chat with Buyer'...")
             await do_human_delay(page, 1500, 3000)
             await trigger_penjual.click()
             await do_human_delay(page, 1500, 3000)
-            await page.locator("text=Chat Pembeli").last.click()
+            pembeli_btn = page.locator("text=Chat Pembeli, text=Chat with Buyer").last
+            await pembeli_btn.click()
             await page.wait_for_timeout(2000)
     except Exception:
         pass
 
-    # 5. Pastikan tab Semua Chat dan Semua Pembeli diklik sekali (Hanya jalan jika belum terbuka)
+    # 5. Pastikan tab Semua Chat / All Chats dan Semua Pembeli / All Buyers diklik sekali
     try:
-        semua_chat = page.locator("text=Semua Chat").first
-        # Tunggu sampai "Semua Chat" visible agar tidak terlewat setelah reload
+        semua_chat = page.locator("text=Semua Chat, text=All Chats").first
+        # Tunggu sampai visible agar tidak terlewat setelah reload
         await semua_chat.wait_for(state="visible", timeout=10000)
         
         if not bot_state.has_setup_tabs:
@@ -109,14 +113,14 @@ async def setup_chat_view(page) -> bool:
             await semua_chat.click()
             await page.wait_for_timeout(2000)
             
-            semua_pembeli = page.locator("text=Semua Pembeli").first
+            semua_pembeli = page.locator("text=Semua Pembeli, text=All Buyers").first
             if await semua_pembeli.is_visible():
                 await do_human_delay(page, 1500, 3500)
                 await semua_pembeli.click()
                 await page.wait_for_timeout(1000)
             bot_state.has_setup_tabs = True
     except Exception as e:
-        log.warning("Gagal setup tab Semua Chat/Semua Pembeli: %s", e)
+        log.warning("Gagal setup tab Semua Chat/All Chats: %s", e)
         # Jangan set bot_state.has_setup_tabs = True agar di iterasi berikutnya dicoba lagi
         return False
         

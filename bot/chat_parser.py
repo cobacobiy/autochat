@@ -7,10 +7,15 @@ async def read_riwayat_chat(page) -> str:
    try:
        history_link_selectors = [
            "text=Lihat Semua Riwayat Chat",
+           "text=View All Chat History",
            "a:has-text('Lihat Semua Riwayat Chat')",
+           "a:has-text('View All Chat History')",
            "text=Lihat semua riwayat chat",
+           "text=View all chat history",
            "span:has-text('Lihat Semua Riwayat Chat')",
+           "span:has-text('View All Chat History')",
            "div:has-text('Lihat Semua Riwayat Chat')",
+           "div:has-text('View All Chat History')",
        ]
        history_link = None
        for sel in history_link_selectors:
@@ -54,7 +59,7 @@ async def read_riwayat_chat(page) -> str:
                let modal = null;
                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
                for (const d of dialogs) {
-                   if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                   if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Chat History") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
                        modal = d;
                        break;
                    }
@@ -67,7 +72,7 @@ async def read_riwayat_chat(page) -> str:
                    const text = (el.textContent || '').trim();
                    if (!text) continue;
                    
-                   if (text.includes("Asisten AI Toko") || text.includes("Pesan kakak suda masuk") || text.includes("Hello dear! What would you like to ask?")) {
+                   if (text.includes("Asisten AI Toko") || text.includes("Shop AI Assistant") || text.includes("Pesan kakak suda masuk") || text.includes("Your message has been received") || text.includes("Hello dear! What would you like to ask?")) {
                        continue;
                    }
                    
@@ -127,7 +132,7 @@ async def read_riwayat_chat(page) -> str:
            await page.evaluate(r'''() => {
                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="popup"], [class*="dialog"]');
                dialogs.forEach(d => {
-                   if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
+                   if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Chat History") || d.textContent.includes("Riwayat chat") || d.textContent.includes("History Chat"))) {
                        d.remove();
                    }
                });
@@ -137,7 +142,7 @@ async def read_riwayat_chat(page) -> str:
            still_open = await page.evaluate(r'''() => {
                const dialogs = document.querySelectorAll('div[role="dialog"], [class*="modal"]');
                for (const d of dialogs) {
-                   if (d.textContent && d.textContent.includes("Riwayat Chat")) return true;
+                   if (d.textContent && (d.textContent.includes("Riwayat Chat") || d.textContent.includes("Chat History"))) return true;
                }
                return false;
            }''')
@@ -196,8 +201,8 @@ async def extract_chat_history(page) -> list:
             
             // Jika ini adalah kotak preview riwayat, ambil isinya dan perlakukan sebagai pesan pembeli
             let is_seller_msg = isSeller(b, bestContainer);
-            if (text.includes('Lihat Semua Riwayat Chat') || (b.closest && b.closest('[class*="history"], [class*="riwayat"]'))) {
-                text = text.replace('Lihat Semua Riwayat Chat', '').replace('Riwayat Chat', '').trim();
+            if (text.includes('Lihat Semua Riwayat Chat') || text.includes('View All Chat History') || (b.closest && b.closest('[class*="history"], [class*="riwayat"]'))) {
+                text = text.replace('Lihat Semua Riwayat Chat', '').replace('View All Chat History', '').replace('Riwayat Chat', '').replace('Chat History', '').trim();
                 is_seller_msg = false; // Anggap sebagai pesan pembeli agar dijawab
                 if (!text) continue;
             }
