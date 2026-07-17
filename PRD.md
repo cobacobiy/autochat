@@ -207,6 +207,13 @@ Membangun **bot auto-reply yang cerdas, aman, dan self-hosted** untuk menjawab c
 | Browser | Chromium via Playwright v1.60+ |
 | Docker | Docker Compose v2+ |
 
+> [!WARNING]
+> **CI/CD Multi-OS Constraint:** Lingkungan CI/CD berjalan di atas OS yang berbeda:
+> - **Production (`deploy`)** berjalan di **Linux**.
+> - **Staging/Preview (`deploy-preview`)** berjalan di **Windows** (akun Local System).
+> 
+> Karena runner Windows (Local System) tidak mendukung eksekusi WSL/bash, **pastikan script GitHub Actions untuk staging menggunakan `shell: pwsh` (PowerShell)**, bukan `bash` atau `sh`, agar terhindar dari error `WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED`.
+
 ---
 
 ## 7. Scope
