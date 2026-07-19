@@ -9,20 +9,6 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-
-    environment:
-      # Set to "false" when using VNC for manual login, "true" for headless ops
-      - HEADLESS=false
-      - PROFILE_DIR=/data/shopee-profile
-      - POLL_INTERVAL=5           # seconds between chat poll cycles
-      - OLLAMA_URL=http://ollama:11434
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - AI_PROVIDER=${AI_PROVIDER:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
-      - OLLAMA_MODEL=qwen2.5:3b
-      - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
 
