@@ -105,9 +105,17 @@ jobs:
           
           subprocess.run(["docker", "build", "-t", image, "./bot"], check=True)
           
+          # Jika deploy dari main, beri tag latest juga
+          image_latest = f"{docker_user}/shopee-autochat-bot:latest"
+          if os.environ.get('IMAGE_TAG', '').startswith('main-'):
+              subprocess.run(["docker", "tag", image, image_latest], check=True)
+              
           if docker_user != "local":
               subprocess.run(["docker", "push", image], check=True)
               print(f"Image pushed: {image}")
+              if os.environ.get('IMAGE_TAG', '').startswith('main-'):
+                  subprocess.run(["docker", "push", image_latest], check=True)
+                  print(f"Image pushed: {image_latest}")
           else:
               print(f"Skipping push: Docker Hub credentials not configured. Image built locally as {image}")
 
