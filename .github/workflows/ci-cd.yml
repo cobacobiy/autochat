@@ -141,46 +141,23 @@ jobs:
         run: |
           Write-Host "Deploying PR #${{ github.event.pull_request.number }} preview..."
           
-          docker compose up -d ollama ollama-init
           docker rm -f shopee-bot-preview *>$null
           $global:LASTEXITCODE = 0
           
           $DOCKER_USER = if ([string]::IsNullOrEmpty($env:DOCKER_USERNAME)) { "local" } else { $env:DOCKER_USERNAME }
-          $IMAGE = "${DOCKER_USER}/shopee-autochat-bot:${env:IMAGE_TAG}"
+          $env:DOCKER_USERNAME = $DOCKER_USER
           
           if ($DOCKER_USER -eq "local") {
-              Write-Host "Building $IMAGE locally for preview because no Docker Hub registry is used..."
-              docker build -t $IMAGE ./bot
+              Write-Host "Building locally for preview because no Docker Hub registry is used..."
+              docker compose up -d --build
           } else {
-              Write-Host "Pulling $IMAGE from registry..."
-              docker pull $IMAGE
+              Write-Host "Pulling images from registry..."
+              docker compose pull
+              docker compose up -d
           }
-          
-          $AiProvider = if ([string]::IsNullOrEmpty($env:AI_PROVIDER)) { "ollama" } else { $env:AI_PROVIDER }
-          $Workspace = $env:GITHUB_WORKSPACE
-          
-          docker run -d `
-              --name shopee-bot-preview `
-              --network autochat_default `
-              --restart unless-stopped `
-              --shm-size=2g `
-              -e HEADLESS=false `
-              -e POLL_INTERVAL=10 `
-              -e VNC_PASSWORD=previewpass `
-              -e "AI_PROVIDER=$AiProvider" `
-              -e OLLAMA_URL=http://172.17.0.1:11434 `
-              -e "GEMINI_API_KEY=$env:GEMINI_API_KEY" `
-              -e "SHOPEE_USERNAME=$env:SHOPEE_USERNAME" `
-              -e "SHOPEE_PASSWORD=$env:SHOPEE_PASSWORD" `
-              -v shopee-bot-profile-preview:/data/shopee-profile `
-              -v shopee-bot-logs-preview:/data/logs `
-              -v "${Workspace}/unanswered_questions.txt:/app/unanswered_questions.txt" `
-              -v "${Workspace}/store_knowledge.txt:/app/store_knowledge.txt" `
-              -p 6081:6080 `
-              -p 7081:8080 `
-              $IMAGE
+          docker image prune -f
               
-          Write-Host "`nPreview berhasil di-deploy!`nnoVNC: http://<SERVER_IP>:6081"
+          Write-Host "`nPreview berhasil di-deploy menggunakan docker-compose!"
 
   # ============================================
   # Cleanup Preview Container
@@ -189,16 +166,16 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: [self-hosted, test]
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Stop Preview Container
         continue-on-error: true
+        shell: powershell
         run: |
-          python -c "print('PR closed. Stopping preview container...')"
-          docker rm -f shopee-bot-preview
+          Write-Host "PR closed. Stopping preview container using docker-compose..."
+          docker rm -f shopee-bot-preview *>$null
+          docker compose down
 
   # ============================================
   # Job 4: Deploy Production (HANYA push ke main)
