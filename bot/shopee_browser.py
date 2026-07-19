@@ -401,7 +401,7 @@ async def handle_unread_chats(page: Page) -> int:
                     latest_history = await extract_chat_history(page)
                     if latest_history and len(latest_history) > 0:
                         latest_msg = latest_history[-1]
-                        if latest_msg["isSeller"] and not is_assistant_ai_msg(latest_msg["text"]):
+                        if latest_msg["isSeller"]:
                             log.warning("🚨 TERDETEKSI BALASAN LAIN (Mungkin bot lain / admin)! Membatalkan pengiriman agar tidak double-reply.")
                             bot_state.replied_cache[cache_key] = time.time()
                             bot_state.replied_cache[target_cache_key_preview] = time.time()
