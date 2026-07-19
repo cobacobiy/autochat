@@ -3,75 +3,112 @@ services:
     image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
     container_name: shopee-bot
     shm_size: 2gb
-
     restart: unless-stopped
-
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
       interval: 30s
+      timeout: 10s
+      retries: 3
+    environment:
+      - HEADLESS=false
+      - PROFILE_DIR=/data/shopee-profile
+      - POLL_INTERVAL=4
+      - OLLAMA_URL=http://ollama:11434
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - OLLAMA_MODEL=qwen2.5:3b
+      - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
-
     volumes:
-      # Persist Chromium session so login survives container restarts
       - shopee-bot-profile:/data/shopee-profile
-      # Persist logs on the host for easy tailing
       - shopee-bot-logs:/data/logs
-      # Bind mount the store knowledge base FAQ file
       - ./store_knowledge.txt:/app/store_knowledge.txt
-      # Bind mount the unanswered questions log
       - ./unanswered_questions.txt:/app/unanswered_questions.txt
-
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
     ports:
-      # noVNC web interface — open http://localhost:6080 to view/control the browser
       - "6080:6080"
-      # Health endpoint API (Production)
       - "7080:8080"
-
-    # Resource limits (adjust to your server)
     deploy:
       resources:
         limits:
           memory: 2g
 
-  # ==========================================================
-  # --- CONTOH: BOT KEDUA (Hapus tanda '#' untuk mengaktifkan)
-  # ==========================================================
-  # shopee-bot-2:
-  #   image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
-  #   container_name: shopee-bot-2
-  #   shm_size: 2gb
-  #   restart: unless-stopped
-  #   environment:
-  #     - HEADLESS=false
-  #     - PROFILE_DIR=/data/shopee-profile
-  #     - POLL_INTERVAL=5
-  #     - OLLAMA_URL=http://ollama:11434
-  #     - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-  #     - AI_PROVIDER=${AI_PROVIDER:-}
-  #     - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
-  #     - OLLAMA_MODEL=qwen2.5:3b
-  #     - UNANSWERED_PATH=/app/unanswered_questions.txt
-  #     - TZ=Asia/Jakarta
-  #     - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
-  #     # BISA DIISI MANUAL AKUN KEDUA:
-  #     # - SHOPEE_USERNAME=akun_kedua_saya
-  #     # - SHOPEE_PASSWORD=password_kedua
-  #   volumes:
-  #     - shopee-bot-profile-2:/data/shopee-profile  # HARUS BEDA DENGAN BOT 1
-  #     - shopee-bot-logs-2:/data/logs               # HARUS BEDA DENGAN BOT 1
-  #     - ./store_knowledge.txt:/app/store_knowledge.txt
-  #     - ./unanswered_questions.txt:/app/unanswered_questions.txt
-  #   ports:
-  #     - "6082:6080" # Akses VNC Bot 2 di http://localhost:6082
-  #     - "7082:8080"
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 2g
+  shopee-bot-2:
+    image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
+    container_name: shopee-bot-2
+    shm_size: 2gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    environment:
+      - HEADLESS=false
+      - PROFILE_DIR=/data/shopee-profile
+      - POLL_INTERVAL=4
+      - OLLAMA_URL=http://ollama:11434
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - OLLAMA_MODEL=qwen2.5:3b
+      - UNANSWERED_PATH=/app/unanswered_questions.txt
+      - TZ=Asia/Jakarta
+      - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+    volumes:
+      - shopee-bot-profile-2:/data/shopee-profile
+      - shopee-bot-logs-2:/data/logs
+      - ./store_knowledge.txt:/app/store_knowledge.txt
+      - ./unanswered_questions.txt:/app/unanswered_questions.txt
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "6082:6080"
+      - "7082:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  shopee-bot-3:
+    image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
+    container_name: shopee-bot-3
+    shm_size: 2gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    environment:
+      - HEADLESS=false
+      - PROFILE_DIR=/data/shopee-profile
+      - POLL_INTERVAL=4
+      - OLLAMA_URL=http://ollama:11434
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - OLLAMA_MODEL=qwen2.5:3b
+      - UNANSWERED_PATH=/app/unanswered_questions.txt
+      - TZ=Asia/Jakarta
+      - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+    volumes:
+      - shopee-bot-profile-3:/data/shopee-profile
+      - shopee-bot-logs-3:/data/logs
+      - ./store_knowledge.txt:/app/store_knowledge.txt
+      - ./unanswered_questions.txt:/app/unanswered_questions.txt
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "6083:6080"
+      - "7083:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   ollama:
     image: ollama/ollama:latest
@@ -99,8 +136,8 @@ services:
 volumes:
   shopee-bot-profile:
   shopee-bot-logs:
+  shopee-bot-profile-2:
+  shopee-bot-logs-2:
+  shopee-bot-profile-3:
+  shopee-bot-logs-3:
   ollama-data:
-  
-  # --- UNTUK BOT KEDUA ---
-  # shopee-bot-profile-2:
-  # shopee-bot-logs-2:
