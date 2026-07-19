@@ -21,6 +21,8 @@ services:
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+      - SHOPEE_USERNAME=${BOT1_SHOPEE_USERNAME:-}
+      - SHOPEE_PASSWORD=${BOT1_SHOPEE_PASSWORD:-}
     volumes:
       - shopee-bot-profile:/data/shopee-profile
       - shopee-bot-logs:/data/logs
@@ -58,9 +60,9 @@ services:
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - SHOPEE_USERNAME=${SHOPEE_USERNAME}
-      - SHOPEE_PASSWORD=${SHOPEE_PASSWORD}
+      - SHOPEE_USERNAME=${BOT2_SHOPEE_USERNAME:-}
+      - SHOPEE_PASSWORD=${BOT2_SHOPEE_PASSWORD:-}
+
     volumes:
       - shopee-bot-profile-2:/data/shopee-profile
       - shopee-bot-logs-2:/data/logs
@@ -98,9 +100,8 @@ services:
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - SHOPEE_USERNAME=${SHOPEE_USERNAME}
-      - SHOPEE_PASSWORD=${SHOPEE_PASSWORD}
+      - SHOPEE_USERNAME=${BOT3_SHOPEE_USERNAME:-}
+      - SHOPEE_PASSWORD=${BOT3_SHOPEE_PASSWORD:-}
     volumes:
       - shopee-bot-profile-3:/data/shopee-profile
       - shopee-bot-logs-3:/data/logs

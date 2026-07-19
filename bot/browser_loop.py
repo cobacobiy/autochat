@@ -152,7 +152,16 @@ async def run_bot():
                         if not shutdown_event.is_set() and ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower():
                             log.info("Memulai proses auto-login setelah jeda...")
                             try:
-                                # Wait for login fields to be visible
+                                # Wait for login fields or language popup to be visible
+                                try:
+                                    lang_btn = page.locator('button:has-text("Bahasa Indonesia")').first
+                                    if await lang_btn.is_visible():
+                                        log.info("Pop-up pilihan bahasa terdeteksi. Memilih 'Bahasa Indonesia'...")
+                                        await lang_btn.click()
+                                        await page.wait_for_timeout(1500)
+                                except Exception as e:
+                                    pass
+
                                 await page.wait_for_selector('input[type="text"], input[name="loginKey"]', timeout=10000)
                                 user_input = page.locator('input[type="text"], input[name="loginKey"]').first
                                 pass_input = page.locator('input[type="password"], input[name="password"]').first
