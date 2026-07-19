@@ -17,7 +17,7 @@ async def setup_chat_view(page: Page) -> bool:
     
     # 1. Handle Error Modals (Klik untuk memuat ulang / Coba Lagi)
     try:
-        reload_btn = page.locator("text=/Klik untuk memuat ulang|Click to reload/i").first
+        reload_btn = page.locator("text=/Klik untuk memuat ulang|Click to reload/i >> visible=true").first
         if await reload_btn.is_visible(timeout=1000):
             log.info("Detected reload button. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)
@@ -26,7 +26,7 @@ async def setup_chat_view(page: Page) -> bool:
             bot_state.has_setup_tabs = False
             return False
             
-        coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
+        coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i >> visible=true").first
         if await coba_lagi_btn.is_visible(timeout=1000):
             log.info("Detected error modal. Menunggu jeda manusiawi sebelum reload...")
             await do_human_delay(page, 3000, 7000)

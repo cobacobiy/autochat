@@ -44,9 +44,9 @@ async def handle_unread_chats(page: Page) -> int:
             try:
                 # Cek jika ada popup error Shopee menutupi layar agar tidak stuck
                 try:
-                    coba_lagi_btn = page.locator("button", has_text=re.compile("Coba Lagi|Try Again", re.IGNORECASE)).first
+                    coba_lagi_btn = page.locator("button:has-text('Coba Lagi'), button:has-text('Try Again') >> visible=true").first
                     if not await coba_lagi_btn.is_visible(timeout=1000):
-                        coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i").first
+                        coba_lagi_btn = page.locator("text=/Coba Lagi|Try Again/i >> visible=true").first
                     
                     if await coba_lagi_btn.is_visible(timeout=1000):
                         log.warning("🚨 Popup 'Coba Lagi' terdeteksi! Mencoba mengklik tombol...")
@@ -139,8 +139,7 @@ async def handle_unread_chats(page: Page) -> int:
                     # Tidak ada chat baru/unread di 2 daftar teratas, hentikan pengecekan
                     break
                 
-                # Simpan preview ini ke cache agar tidak diloop berulang kali jika ternyata di-skip
-                bot_state.replied_cache[target_cache_key_preview] = time.time()
+                # Jangan cache di sini. Kita cache NANTI setelah berhasil diproses atau di-skip secara disengaja.
                 
                 item = target_item
                 username = target_username
@@ -256,6 +255,7 @@ async def handle_unread_chats(page: Page) -> int:
                 
                 if "gagal mengirim" in last_msg_text.lower() or "tunggu balasan pembeli" in last_msg_text.lower() or "sending failed" in last_msg_text.lower() or "failed to send" in last_msg_text.lower() or "wait for the buyer" in last_msg_text.lower():
                     log.info("Chat blocked by Shopee (Gagal mengirim / Sending failed). Waiting for buyer to reply. Skipping.")
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     continue
 
                 is_assistant_ai = is_assistant_ai_msg(last_msg_text)
@@ -277,6 +277,7 @@ async def handle_unread_chats(page: Page) -> int:
 
                 if last_msg_is_seller and not is_assistant_ai and not is_image:
                     log.info("Seller already replied to the latest message. Skipping.")
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     bot_state.daily_skip_count += 1
                     continue
 
@@ -307,6 +308,7 @@ async def handle_unread_chats(page: Page) -> int:
                         force_default_reply = True
                     else:
                         log.info("No buyer message found (buyer did not chat anything). Skipping.")
+                        bot_state.replied_cache[target_cache_key_preview] = time.time()
                         continue
 
                 has_real_buyer_message = bool(buyer_message.strip()) and not force_default_reply
@@ -320,18 +322,21 @@ async def handle_unread_chats(page: Page) -> int:
                 cache_key = f"{username}:{buyer_message[:50]}"
                 if cache_key in bot_state.replied_cache:
                     log.debug("Already replied to '%s' with this message context, skipping.", username)
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     continue
                 
                 buyer_msg_lower = buyer_message.strip().lower().rstrip(".,!?~ ")
                 if buyer_msg_lower in SKIP_MESSAGES:
                     log.info("Skipping non-question acknowledgment for '%s': %s", username, buyer_message)
                     bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     bot_state.daily_skip_count += 1
                     continue
 
                 if bot_state.daily_reply_counter >= MAX_DAILY_REPLIES:
                     log.warning("⚠️ Daily reply limit reached (%d). Skipping reply for '%s'.", MAX_DAILY_REPLIES, username)
                     bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     continue
 
                 # Deteksi pesan pembatalan/cancel/refund — serahkan ke admin manusia
@@ -350,6 +355,7 @@ async def handle_unread_chats(page: Page) -> int:
                     except Exception as e:
                         log.error("Gagal mencatat pembatalan: %s", e)
                     bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     bot_state.daily_unanswered_count += 1
                     continue
 
@@ -361,6 +367,7 @@ async def handle_unread_chats(page: Page) -> int:
                 if reply_text == "SKIP":
                     log.info("AI memutuskan untuk SKIP pesan ini (mungkin sekadar ucapan terima kasih/konfirmasi).")
                     bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     bot_state.daily_skip_count += 1
                     continue
                 
@@ -375,10 +382,12 @@ async def handle_unread_chats(page: Page) -> int:
                             log.error("Gagal mencatat: %s", e)
                         log.info("SKIP: Fallback TIDAK TAHU, biarkan admin jawab.")
                         bot_state.replied_cache[cache_key] = time.time()
+                        bot_state.replied_cache[target_cache_key_preview] = time.time()
                         bot_state.daily_unanswered_count += 1
                         continue
                     else:
                         bot_state.replied_cache[cache_key] = time.time()
+                        bot_state.replied_cache[target_cache_key_preview] = time.time()
                         bot_state.daily_skip_count += 1
                         continue
 
@@ -408,6 +417,7 @@ async def handle_unread_chats(page: Page) -> int:
                     bot_state.sent_messages[username].add(reply_text.strip().lower())
                     
                     bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     bot_state.daily_reply_counter += 1
                     bot_state.daily_ai_replied_count += 1
                     log.info("Daily reply count: %d/%d", bot_state.daily_reply_counter, MAX_DAILY_REPLIES)

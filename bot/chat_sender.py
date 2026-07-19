@@ -59,8 +59,8 @@ async def send_reply(page: Page, reply_text: str, username: str) -> Union[bool, 
     if not input_box:
         try:
             page_content = await page.content()
-            if "Chat telah diakhiri otomatis" in page_content or "Asisten AI Toko" in page_content:
-                log.info("Chat with '%s' is closed or delegated to Shopee's AI Assistant. Skipping reply.", username)
+            if "Chat telah diakhiri otomatis" in page_content:
+                log.info("Chat with '%s' is closed. Skipping reply.", username)
                 return True
         except Exception as ce_err:
             log.warning("Failed to check page content for closed chat: %s", ce_err)
