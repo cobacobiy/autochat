@@ -133,7 +133,7 @@ services:
               capabilities: [gpu]
 
   ollama:
-    image: ollama/ollama:0.7.1
+    image: ollama/ollama:latest
     container_name: ollama
     volumes:
       - ollama-data:/root/.ollama
@@ -153,7 +153,7 @@ services:
               capabilities: [gpu]
 
   ollama-init:
-    image: ollama/ollama:0.7.1
+    image: ollama/ollama:latest
     container_name: ollama-init
     restart: "on-failure"
     depends_on:
