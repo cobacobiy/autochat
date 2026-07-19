@@ -81,10 +81,11 @@ async def run_bot():
                                 "--disable-setuid-sandbox",
                                 "--disable-dev-shm-usage",
                                 "--disable-blink-features=AutomationControlled",
+                                "--disable-gpu",
                                 "--js-flags=--max-old-space-size=4096",
                                 "--hide-crash-restore-bubble",
                             ],
-                            viewport={"width": 1280, "height": 900},
+                            viewport={"width": 1920, "height": 1080},
                         ),
                         timeout=60.0
                     )
