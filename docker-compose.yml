@@ -193,6 +193,11 @@ services:
 #       resources:
 #         limits:
 #           memory: 2g
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               count: all
+#               capabilities: [gpu]
 
 #   shopee-bot-5:
 #     image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
@@ -232,6 +237,11 @@ services:
 #       resources:
 #         limits:
 #           memory: 2g
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               count: all
+#               capabilities: [gpu]
 
 #   shopee-bot-6:
 #     image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
@@ -271,6 +281,11 @@ services:
 #       resources:
 #         limits:
 #           memory: 2g
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               count: all
+#               capabilities: [gpu]
 
 volumes:
   shopee-bot-profile:
