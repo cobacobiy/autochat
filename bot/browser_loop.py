@@ -130,7 +130,7 @@ async def run_bot():
                     continue
 
                 # Check if already logged in (ignore is_from_login query param)
-                is_logged_out = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                is_logged_out = ("/login" in page.url.lower() or "/auth" in page.url.lower() or "/verify" in page.url.lower() or "captcha" in page.url.lower() or "challenge" in page.url.lower())
                 
                 if is_logged_out:
                     log.warning(
@@ -177,7 +177,7 @@ async def run_bot():
                         try:
                             await page.wait_for_timeout(5000)
                             # Check if we are logged in now
-                            current_is_logged_out = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                            current_is_logged_out = ("/login" in page.url.lower() or "/auth" in page.url.lower() or "/verify" in page.url.lower() or "captcha" in page.url.lower() or "challenge" in page.url.lower())
                             if not current_is_logged_out:
                                 log.info("Login detected! Starting polling loop...")
                                 login_detected = True
@@ -300,12 +300,12 @@ async def run_bot():
                             await page.wait_for_timeout(3000)
     
                         # Dynamic routing check (detect if redirected to login page)
-                        is_logged_out_inner = ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower()
+                        is_logged_out_inner = ("/login" in page.url.lower() or "/auth" in page.url.lower() or "/verify" in page.url.lower() or "captcha" in page.url.lower() or "challenge" in page.url.lower())
                         if is_logged_out_inner:
                             log.warning("Detected logout/redirect to login page. Retrying navigation...")
                             await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded")
                             await page.wait_for_timeout(3000)
-                            if ("/login" in page.url.lower() or "/auth" in page.url.lower()) and "is_from_login=true" not in page.url.lower():
+                            if ("/login" in page.url.lower() or "/auth" in page.url.lower() or "/verify" in page.url.lower() or "captcha" in page.url.lower() or "challenge" in page.url.lower()):
                                 log.error("Still not logged in. Breaking out to main loop for auto-login sequence...")
                                 break
     
