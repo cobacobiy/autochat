@@ -35,6 +35,9 @@ J: Bisa di lacak di pesanan dan info estimasi sampainya ya kak.
 T: Pesanan ga sampai / sudah melewati estimasi pengiriman
 J: Bisa di ajukan ke shopee dibagian pesanan paling bawah...alasan produk blom sampai..supaya bisa di investigasi pengirimanya ya.
 
+T: Resi tidak bergerak / pergerakan paket berhenti / ngestuck
+J: Bisa di ajukan ke shopee..supaya bisa di investigasi pengirimanya ya kak.
+
 T: Apa produknya muat?
 J: Bisa di geser ke kanan gambar produknya kak untuk panduan ukuranya ya .
 
