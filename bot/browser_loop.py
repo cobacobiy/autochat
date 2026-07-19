@@ -159,7 +159,7 @@ async def run_bot():
                                         log.info("Pop-up pilihan bahasa terdeteksi. Memilih 'Bahasa Indonesia'...")
                                         await lang_btn.click()
                                         await page.wait_for_timeout(1500)
-                                except Exception as e:
+                                except Exception:
                                     pass
 
                                 await page.wait_for_selector('input[type="text"], input[name="loginKey"]', timeout=10000)
