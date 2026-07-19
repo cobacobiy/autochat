@@ -80,8 +80,6 @@ IS_SELLER_JS = _load_js("is_seller.js")
 GET_CHAT_ITEMS_JS = _load_js("get_chat_items.js")
 
 if AI_PROVIDER == "gemini" and not GEMINI_API_KEY:
-    import logging
     logging.warning("AI_PROVIDER is gemini but GEMINI_API_KEY is not set!")
 elif AI_PROVIDER == "claude" and not ANTHROPIC_API_KEY:
-    import logging
     logging.warning("AI_PROVIDER is claude but ANTHROPIC_API_KEY is not set!")

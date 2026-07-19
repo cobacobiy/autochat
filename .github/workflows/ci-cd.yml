@@ -32,7 +32,7 @@ jobs:
       - name: Install Dependencies
         continue-on-error: true
         run: |
-          python -m pip install -r bot/requirements.txt --break-system-packages
+          python -m pip install -r bot/requirements-dev.txt --break-system-packages
           python -m pip install ruff --break-system-packages
 
       - name: Validasi Kode (Lint)

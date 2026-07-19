@@ -133,11 +133,17 @@ services:
               capabilities: [gpu]
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.7.1
     container_name: ollama
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         reservations:
@@ -147,10 +153,12 @@ services:
               capabilities: [gpu]
 
   ollama-init:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.7.1
     container_name: ollama-init
+    restart: "on-failure"
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
     entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull qwen2 && ollama pull qwen2.5:3b" ]

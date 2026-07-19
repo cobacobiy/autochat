@@ -4,12 +4,6 @@ __pycache__/
 *.pyc
 .env
 .venv/
-bot-profile/
-logs/
-__pycache__/
-*.pyc
-.env
-.venv/
 logs-preview/
 bot-profile-preview/
 *.png
@@ -22,6 +16,9 @@ output.log
 patch.py
 bot_main_from_main.py
 temp_log.txt
+gen_key.ps1
+gh_log.txt
+unanswered_questions.txt
 
 # Temporary refactoring scripts
 patch_*.py

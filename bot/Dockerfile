@@ -35,4 +35,8 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Expose noVNC web port
 EXPOSE 6080
 
+# Health check (also defined in docker-compose, but this is a fallback for standalone usage)
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080')"
+
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

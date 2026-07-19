@@ -81,8 +81,6 @@ async def run_bot():
                                 "--disable-setuid-sandbox",
                                 "--disable-dev-shm-usage",
                                 "--disable-blink-features=AutomationControlled",
-                                "--disable-gpu",
-                                "--disable-software-rasterizer",
                                 "--js-flags=--max-old-space-size=4096",
                                 "--hide-crash-restore-bubble",
                             ],
@@ -222,8 +220,6 @@ async def run_bot():
                             bot_state.sent_messages.clear()
                             log.info("Daily reset: Cleared bot_state.sent_messages cache.")
 
-
-                            
                         # Enforce MAX_CACHE_SIZE limit
                         if len(bot_state.replied_cache) > MAX_CACHE_SIZE:
                             sorted_items = sorted(bot_state.replied_cache.items(), key=lambda x: x[1])
