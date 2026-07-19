@@ -199,6 +199,7 @@ async def run_bot():
 
                 # Define browser lifetime
                 browser_lifetime_limit = BROWSER_LIFETIME_SECONDS
+                last_page_reload_time = time.time()
 
                 while not shutdown_event.is_set():
                     try:
@@ -308,7 +309,19 @@ async def run_bot():
                                 log.error("Still not logged in. Breaking out to main loop for auto-login sequence...")
                                 break
     
-                        # Scheduled page reload has been removed by user request
+                        # Scheduled page reload every 2 hours (7200 seconds)
+                        if time.time() - last_page_reload_time > 7200:
+                            log.info("🕒 Scheduled periodic page reload (every 2 hours)...")
+                            try:
+                                await page.goto("https://seller.shopee.co.id/", wait_until="domcontentloaded", timeout=30000)
+                                await page.wait_for_timeout(3000)
+                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
+                                await page.wait_for_timeout(5000)
+                                bot_state.has_setup_tabs = False
+                                last_page_reload_time = time.time()
+                                continue
+                            except Exception as e:
+                                log.error("Failed to perform scheduled page reload: %s", e)
     
                         # Scan and reply to unread chats directly on the live page
                         count = await handle_unread_chats(page)
