@@ -58,6 +58,9 @@ services:
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+      # SILAKAN GANTI DENGAN AKUN KEDUA KAKAK UNTUK AUTO-LOGIN:
+      # - SHOPEE_USERNAME=isi_username_akun_2_disini
+      # - SHOPEE_PASSWORD=isi_password_akun_2_disini
     volumes:
       - shopee-bot-profile-2:/data/shopee-profile
       - shopee-bot-logs-2:/data/logs
@@ -95,6 +98,9 @@ services:
       - UNANSWERED_PATH=/app/unanswered_questions.txt
       - TZ=Asia/Jakarta
       - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+      # SILAKAN GANTI DENGAN AKUN KETIGA KAKAK UNTUK AUTO-LOGIN:
+      # - SHOPEE_USERNAME=isi_username_akun_3_disini
+      # - SHOPEE_PASSWORD=isi_password_akun_3_disini
     volumes:
       - shopee-bot-profile-3:/data/shopee-profile
       - shopee-bot-logs-3:/data/logs
