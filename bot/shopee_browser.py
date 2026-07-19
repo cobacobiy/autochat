@@ -395,6 +395,21 @@ async def handle_unread_chats(page: Page) -> int:
                     bot_state.daily_skip_count += 1
                     continue
                 
+                # RE-CHECK DOM to prevent race conditions (double replies from other bots / admin)
+                log.info("Memeriksa ulang DOM chat untuk mencegah double-reply (setelah antrean AI)...")
+                try:
+                    latest_history = await extract_chat_history(page)
+                    if latest_history and len(latest_history) > 0:
+                        latest_msg = latest_history[-1]
+                        if latest_msg["isSeller"] and not is_assistant_ai_msg(latest_msg["text"]):
+                            log.warning("🚨 TERDETEKSI BALASAN LAIN (Mungkin bot lain / admin)! Membatalkan pengiriman agar tidak double-reply.")
+                            bot_state.replied_cache[cache_key] = time.time()
+                            bot_state.replied_cache[target_cache_key_preview] = time.time()
+                            bot_state.daily_skip_count += 1
+                            continue
+                except Exception as e:
+                    log.warning("Gagal mem-verifikasi ulang DOM: %s", e)
+                
                 if reply_text == "TIDAK TAHU":
                     log.warning("👉 API Error / Fallback ke TIDAK TAHU: %s", buyer_message)
                     if has_real_buyer_message:
