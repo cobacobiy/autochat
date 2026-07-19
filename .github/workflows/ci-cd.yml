@@ -13,7 +13,7 @@ jobs:
   # ============================================
   validate:
     if: github.event.action != 'closed'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
   build:
     if: github.event.action != 'closed'
     needs: validate
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.tag.outputs.IMAGE_TAG }}
     steps:
