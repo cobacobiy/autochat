@@ -141,8 +141,7 @@ jobs:
         run: |
           Write-Host "Deploying PR #${{ github.event.pull_request.number }} preview..."
           
-          docker rm -f shopee-bot-preview *>$null
-          $global:LASTEXITCODE = 0
+          docker ps -q -f name=shopee-bot-preview | ForEach-Object { docker rm -f $_ }
           
           $DOCKER_USER = if ([string]::IsNullOrEmpty($env:DOCKER_USERNAME)) { "local" } else { $env:DOCKER_USERNAME }
           $env:DOCKER_USERNAME = $DOCKER_USER
@@ -174,7 +173,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host "PR closed. Stopping preview container using docker-compose..."
-          docker rm -f shopee-bot-preview *>$null
+          docker ps -q -f name=shopee-bot-preview | ForEach-Object { docker rm -f $_ }
           docker compose down
 
   # ============================================
