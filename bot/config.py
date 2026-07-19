@@ -61,6 +61,10 @@ SKIP_MESSAGES = {
     "tolong kirim sesuai pesanan", "sesuai pesanan ya", "sesuai pesanan"
 }
 
+ADMIN_KEYWORDS = {
+    "instan", "instant", "gojek", "grab", "sameday", "same day", "gosend"
+}
+
 _JS_DIR = os.path.join(os.path.dirname(__file__), "js")
 
 def _load_js(filename: str) -> str:

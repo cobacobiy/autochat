@@ -8,7 +8,7 @@ from playwright.async_api import Page
 
 from bot.config import (
     AUTO_REPLIES, DEFAULT_REPLY, LOG_DIR,
-    SKIP_MESSAGES, GET_CHAT_ITEMS_JS,
+    SKIP_MESSAGES, ADMIN_KEYWORDS, GET_CHAT_ITEMS_JS,
     UNANSWERED_PATH, MAX_DAILY_REPLIES,
     FORCE_RELOAD, MAX_CHAT_SCAN_ATTEMPTS
 )
@@ -125,6 +125,13 @@ async def handle_unread_chats(page: Page) -> int:
                                     cache_key_preview = f"PREV_{u_name}_{preview_snippet}"
                                     cache_key_daily = f"{u_name}_{datetime.now().strftime('%Y-%m-%d')}"
                                     
+                                    # Cek apakah preview mengandung kata kunci admin (misal: instan, gojek)
+                                    if any(kw in preview_lower for kw in ADMIN_KEYWORDS):
+                                        log.info("Preview mengandung keyword admin (%s). Melewati chat agar admin dapat memproses langsung.", preview_lower[:30])
+                                        # Simpan di cache agar bot tidak terus-menerus mengeceknya hari ini
+                                        bot_state.replied_cache[cache_key_preview] = time.time()
+                                        continue
+                                        
                                     # Abaikan jika preview ini sudah diproses, ATAU jika hari ini sudah pernah dibalas
                                     if cache_key_preview not in bot_state.replied_cache and cache_key_daily not in bot_state.replied_cache:
                                         target_item = item
@@ -315,13 +322,28 @@ async def handle_unread_chats(page: Page) -> int:
 
                 has_real_buyer_message = bool(buyer_message.strip()) and not force_default_reply
 
+                buyer_message_clean = buyer_message
                 if is_image:
                     if buyer_message and buyer_message != last_msg_text:
                         buyer_message = f'[Pesan terakhir berupa gambar. Pesan pembeli sebelumnya: "{buyer_message}"]'
                     else:
-                        buyer_message = "[Pesan terakhir berupa gambar]"
-
-                cache_key = f"{username}:{buyer_message[:50]}"
+                        buyer_message_clean = re.sub(r'\s+', ' ', buyer_message).strip()
+                
+                # Check for ADMIN_KEYWORDS in the full message
+                if any(kw in buyer_message_clean.lower() for kw in ADMIN_KEYWORDS):
+                    log.info("Pesan mengandung keyword admin (instan, gojek, dll). Menyerahkan ke admin.")
+                    try:
+                        with open(UNANSWERED_PATH, "a", encoding="utf-8") as f:
+                            f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {buyer_message_clean}\nJ: [SKIPPED - KATA KUNCI ADMIN]\n")
+                    except Exception as e:
+                        pass
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
+                    # Cache daily so it is not processed again today
+                    bot_state.replied_cache[f"{username}_{datetime.now().strftime('%Y-%m-%d')}"] = time.time()
+                    bot_state.daily_unanswered_count += 1
+                    continue
+                
+                cache_key = f"{username}_{buyer_message_clean}"
                 if cache_key in bot_state.replied_cache:
                     log.debug("Already replied to '%s' with this message context, skipping.", username)
                     bot_state.replied_cache[target_cache_key_preview] = time.time()
