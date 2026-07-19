@@ -187,53 +187,51 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Deploy to Production
-        shell: python
+        shell: bash
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AI_PROVIDER: "ollama"
         run: |
-          import os
-          import subprocess
-          import shutil
+          TARGET_DIR="/home/gpu/actions-runner-autochat/runner-autochat/autochat/autochat"
           
-          # Gunakan folder permanen agar file konfigurasi & knowledge base tidak terhapus setelah GH Action selesai
-          target_dir = "/home/gpu/actions-runner-autochat/runner-autochat/autochat/autochat"
-          os.makedirs(target_dir, exist_ok=True)
+          echo "Deploying shopee-autochat-bot:${IMAGE_TAG:-latest} to production..."
           
-          # Selalu perbarui docker-compose.yml
-          shutil.copy("docker-compose.yml", os.path.join(target_dir, "docker-compose.yml"))
+          # 1. Pastikan folder permanen ada
+          mkdir -p "$TARGET_DIR"
           
-          # Jangan timpa file knowledge & questions jika sudah ada di host
-          if not os.path.exists(os.path.join(target_dir, "store_knowledge.txt")):
-              shutil.copy("store_knowledge.txt", os.path.join(target_dir, "store_knowledge.txt"))
-          if not os.path.exists(os.path.join(target_dir, "unanswered_questions.txt")):
-              shutil.copy("unanswered_questions.txt", os.path.join(target_dir, "unanswered_questions.txt"))
+          # 2. Sinkronisasi file dari repositori ke folder permanen
+          #    Exclude .git, .env, store_knowledge.txt, dan unanswered_questions.txt agar data penting tidak tertimpa/terhapus.
+          rsync -av --delete \
+            --exclude '.git' \
+            --exclude '.env' \
+            --exclude 'store_knowledge.txt' \
+            --exclude 'unanswered_questions.txt' \
+            ./ "$TARGET_DIR/"
+            
+          # 3. Pastikan file data eksis (buat kosong jika belum ada)
+          touch "$TARGET_DIR/store_knowledge.txt"
+          touch "$TARGET_DIR/unanswered_questions.txt"
           
-          print("Deploying shopee-autochat-bot:latest to production...")
-          subprocess.run(["docker", "rm", "-f", "shopee-bot-preview"], check=False)
+          # 4. Hapus preview container yang mungkin masih menyala
+          docker rm -f shopee-bot-preview || true
           
-          docker_user = os.environ.get("DOCKER_USERNAME") or "local"
-          env_vars = os.environ.copy()
-          env_vars["DOCKER_USERNAME"] = docker_user
-          env_vars["IMAGE_TAG"] = os.environ.get("IMAGE_TAG")
-          env_vars["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
-          env_vars["AI_PROVIDER"] = os.environ.get("AI_PROVIDER", "ollama")
+          # 5. Jalankan Docker Compose dari dalam folder permanen
+          cd "$TARGET_DIR"
           
-          if docker_user == "local":
-              print("Building and deploying locally because no Docker Hub registry is used...")
-              subprocess.run(["docker", "compose", "up", "-d", "--build"], env=env_vars, cwd=target_dir, check=True)
-          else:
-              print("Pulling image from registry and deploying...")
-              subprocess.run(["docker", "compose", "pull"], env=env_vars, cwd=target_dir, check=True)
-              subprocess.run(["docker", "compose", "up", "-d"], env=env_vars, cwd=target_dir, check=True)
-          subprocess.run(["docker", "image", "prune", "-f"], check=False)
+          export DOCKER_USERNAME="${DOCKER_USERNAME:-local}"
           
-          print("Deploy production selesai!\nnoVNC: http://<SERVER_IP>:6080")
+          if [ "$DOCKER_USERNAME" = "local" ]; then
+              echo "Building and deploying locally because no Docker Hub registry is used..."
+              docker compose up -d --build
+          else
+              echo "Pulling image from registry and deploying..."
+              docker compose pull
+              docker compose up -d
+          fi
+          
+          docker image prune -f
+          
+          echo -e "\nDeploy production selesai!\nnoVNC: http://<SERVER_IP>:6080"
