@@ -426,8 +426,12 @@ async def handle_unread_chats(page: Page) -> int:
                         except Exception as e:
                             log.error("Gagal mencatat: %s", e)
                         
-                        log.info("Dicatat ke unanswered_questions.txt untuk di-review admin, tapi tetap dikirimkan balasan ala CS.")
+                        log.info("Dicatat ke unanswered_questions.txt untuk di-review admin. Bot TIDAK akan mengirim balasan.")
                         bot_state.daily_unanswered_count += 1
+                        
+                    bot_state.replied_cache[cache_key] = time.time()
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
+                    continue
 
                 log.info("=== REPLY ATTEMPT for user '%s' ===", username)
                 log.info("Reply text: %s", reply_text[:80])
