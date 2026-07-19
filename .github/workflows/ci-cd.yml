@@ -233,11 +233,11 @@ jobs:
           
           if [ "$DOCKER_USERNAME" = "local" ]; then
               echo "Building and deploying locally because no Docker Hub registry is used..."
-              docker compose up -d --build
+              docker compose up -d --build --remove-orphans
           else
               echo "Pulling image from registry and deploying..."
               docker compose pull
-              docker compose up -d
+              docker compose up -d --remove-orphans
           fi
           
           docker image prune -f
