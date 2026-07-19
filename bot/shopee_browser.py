@@ -335,7 +335,7 @@ async def handle_unread_chats(page: Page) -> int:
                     try:
                         with open(UNANSWERED_PATH, "a", encoding="utf-8") as f:
                             f.write(f"\n\n[{datetime.now().strftime('%Y-%m-%d %H:%M')}] User: {username}\nT: {buyer_message_clean}\nJ: [SKIPPED - KATA KUNCI ADMIN]\n")
-                    except Exception as e:
+                    except Exception:
                         pass
                     bot_state.replied_cache[target_cache_key_preview] = time.time()
                     # Cache daily so it is not processed again today
