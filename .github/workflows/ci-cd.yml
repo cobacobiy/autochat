@@ -202,6 +202,20 @@ jobs:
         run: |
           import os
           import subprocess
+          import shutil
+          
+          # Gunakan folder permanen agar file konfigurasi & knowledge base tidak terhapus setelah GH Action selesai
+          target_dir = "/home/gpu/actions-runner-autochat/runner-autochat/autochat/autochat"
+          os.makedirs(target_dir, exist_ok=True)
+          
+          # Selalu perbarui docker-compose.yml
+          shutil.copy("docker-compose.yml", os.path.join(target_dir, "docker-compose.yml"))
+          
+          # Jangan timpa file knowledge & questions jika sudah ada di host
+          if not os.path.exists(os.path.join(target_dir, "store_knowledge.txt")):
+              shutil.copy("store_knowledge.txt", os.path.join(target_dir, "store_knowledge.txt"))
+          if not os.path.exists(os.path.join(target_dir, "unanswered_questions.txt")):
+              shutil.copy("unanswered_questions.txt", os.path.join(target_dir, "unanswered_questions.txt"))
           
           print("Deploying shopee-autochat-bot:latest to production...")
           subprocess.run(["docker", "rm", "-f", "shopee-bot-preview"], check=False)
@@ -215,11 +229,11 @@ jobs:
           
           if docker_user == "local":
               print("Building and deploying locally because no Docker Hub registry is used...")
-              subprocess.run(["docker", "compose", "up", "-d", "--build"], env=env_vars, check=True)
+              subprocess.run(["docker", "compose", "up", "-d", "--build"], env=env_vars, cwd=target_dir, check=True)
           else:
               print("Pulling image from registry and deploying...")
-              subprocess.run(["docker", "compose", "pull"], env=env_vars, check=True)
-              subprocess.run(["docker", "compose", "up", "-d"], env=env_vars, check=True)
+              subprocess.run(["docker", "compose", "pull"], env=env_vars, cwd=target_dir, check=True)
+              subprocess.run(["docker", "compose", "up", "-d"], env=env_vars, cwd=target_dir, check=True)
           subprocess.run(["docker", "image", "prune", "-f"], check=False)
           
           print("Deploy production selesai!\nnoVNC: http://<SERVER_IP>:6080")
