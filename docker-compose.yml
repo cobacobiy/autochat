@@ -146,37 +146,4 @@ volumes:
   shopee-bot-logs-2:
   shopee-bot-profile-3:
   shopee-bot-logs-3:
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-  ollama-init:
-    image: ollama/ollama:latest
-    container_name: ollama-init
-    depends_on:
-      - ollama
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-    entrypoint: [ "sh", "-c", "until ollama list; do sleep 1; done && ollama pull qwen2.5:3b" ]
-
-volumes:
-  shopee-bot-profile:
-  shopee-bot-logs:
-  shopee-bot-profile-2:
-  shopee-bot-logs-2:
-  shopee-bot-profile-3:
-  shopee-bot-logs-3:
   ollama-data:
