@@ -114,8 +114,9 @@ async def handle_unread_chats(page: Page) -> int:
                             
                             # Targetkan chat ini JIKA:
                             # 1. Chat Asisten AI Toko (bisa di urutan berapapun karena sering nyangkut)
-                            # 2. ATAU Chat biasa, TAPI harus di urutan paling atas (standby layaknya manusia)
-                            if has_ai or (idx == 0 and (has_unread or not already_replied)):
+                            # 2. Chat memiliki badge unread
+                            # 3. Atau chat di urutan teratas yang belum dibalas
+                            if has_ai or has_unread or (idx == 0 and not already_replied):
                                 lines = [line.strip() for line in text.split('\n') if line.strip()]
                                 if lines:
                                     u_name = lines[0]
@@ -232,7 +233,8 @@ async def handle_unread_chats(page: Page) -> int:
                         await page.screenshot(path=os.path.join(LOG_DIR, "empty_history.png"))
                     except Exception:
                         pass
-                    log.info("No message history found, skipping.")
+                    log.info("No message history found, caching preview to avoid infinite loop, and skipping.")
+                    bot_state.replied_cache[target_cache_key_preview] = time.time()
                     continue
 
                 for msg in chat_history:
