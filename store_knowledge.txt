@@ -14,6 +14,9 @@ Alamat Pengiriman Penjual: Penjaringan, Jakarta Utara.
 T: bisa req warna / request warna / request motif / pilih warna / pilih motif / bjsa req warna
 J: Bisa kak, silakan tulis request warna atau motif di catatan untuk penjual saat checkout ya kak.
 
+T: udah keburu co / lupa tulis di catatan / terlanjur co / lupa cantumkan warna / lupa request
+J: Halo kak, mohon maaf kami tidak bisa memproses request warna/motif melalui chat. Silakan batalkan pesanan (cancel) terlebih dahulu, lalu order ulang dan pastikan menuliskan request di kolom "Catatan untuk penjual" sebelum checkout ya kak.
+
 T: Dikirim dari mana kak? / drmn / darimana / dikirim drmn
 J: Pengiriman dari Penjaringan, Jakarta Utara kak.
 
