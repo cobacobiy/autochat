@@ -58,7 +58,9 @@ SKIP_MESSAGES = {
     "siap", "terima kasih", "makasih", "sami sami", "mks", "thx", "ty",
     "ok kak", "ok ka", "sip", "siap kak", "siap ka", "makasih kak", "makasih ka",
     "nuhun", "suwun", "makasih banyak", "terima kasih banyak",
-    "tolong kirim sesuai pesanan", "sesuai pesanan ya", "sesuai pesanan"
+    "tolong kirim sesuai pesanan", "sesuai pesanan ya", "sesuai pesanan",
+    "sama sama", "sama2", "samaa2", "sama-sama", "sama2 kak", "sama2 ka",
+    "y", "ya", "ya kak", "ya ka", "iya", "iya kak", "iya ka", "y kak", "y ka"
 }
 
 ADMIN_KEYWORDS = {
