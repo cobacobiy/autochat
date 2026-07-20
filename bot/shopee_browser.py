@@ -220,17 +220,26 @@ async def handle_unread_chats(page: Page) -> int:
                 # Kita akan murni mengandalkan history chat yang sudah tampil di layar (DOM utama).
                 riwayat_buyer_message = ""
                 try:
-                    riwayat_loc = page.locator("text=/Lihat Semua Riwayat Chat|View All Chat History/i")
-                    if await riwayat_loc.count() > 0:
-                        parent_text = await riwayat_loc.first.locator("xpath=..").inner_text()
-                        for line in reversed(parent_text.split('\n')):
-                            line = line.strip()
-                            if line.lower().startswith(username.lower() + ":") or line.lower().startswith(username.lower() + " :"):
-                                idx = line.find(":")
-                                riwayat_buyer_message = line[idx+1:].strip()
-                                break
-                except Exception:
-                    pass
+                    riwayat_buyer_message = await page.evaluate(r'''(username) => {
+                        const links = Array.from(document.querySelectorAll('div, span, a')).filter(el => 
+                            el.innerText && (el.innerText.includes('Lihat Semua Riwayat Chat') || el.innerText.includes('View All Chat History'))
+                        );
+                        for (const link of links) {
+                            const bubble = link.closest('[data-cy="webchat-message-receive"], [class*="message-bubble"], [class*="message-item"], [class*="msg-item"], .message, .bubble, [class*="message_text"]');
+                            if (bubble) {
+                                const lines = bubble.innerText.split('\n');
+                                for (let i = lines.length - 1; i >= 0; i--) {
+                                    const line = lines[i].trim();
+                                    if (line.toLowerCase().startsWith(username.toLowerCase() + ":") || line.toLowerCase().startsWith(username.toLowerCase() + " :")) {
+                                        return line.substring(line.indexOf(":") + 1).trim();
+                                    }
+                                }
+                            }
+                        }
+                        return "";
+                    }''', username)
+                except Exception as e:
+                    log.warning("Gagal parsing riwayat dari DOM: %s", e)
                     
                 chat_history = await extract_chat_history(page)
 
