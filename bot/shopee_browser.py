@@ -401,8 +401,15 @@ async def handle_unread_chats(page: Page) -> int:
                     log.info("AI memutuskan untuk SKIP pesan ini (mungkin sekadar ucapan terima kasih/konfirmasi).")
                     bot_state.replied_cache[cache_key] = time.time()
                     bot_state.replied_cache[target_cache_key_preview] = time.time()
-                    bot_state.daily_skip_count += 1
                     continue
+                if not reply_text:
+                    continue
+                
+                # Jeda acak (anti-race condition) agar jika ada 3 bot bersamaan selesai dari Ollama, mereka mengecek DOM di waktu berbeda
+                import random
+                anti_race_delay = random.randint(1500, 5000)
+                log.info(f"Jeda anti-race condition {anti_race_delay} ms sebelum re-check DOM...")
+                await page.wait_for_timeout(anti_race_delay)
                 
                 # RE-CHECK DOM to prevent race conditions (double replies from other bots / admin)
                 log.info("Memeriksa ulang DOM chat untuk mencegah double-reply (setelah antrean AI)...")
