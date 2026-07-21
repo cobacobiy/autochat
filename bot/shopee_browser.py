@@ -406,7 +406,6 @@ async def handle_unread_chats(page: Page) -> int:
                     continue
                 
                 # Jeda acak (anti-race condition) agar jika ada 3 bot bersamaan selesai dari Ollama, mereka mengecek DOM di waktu berbeda
-                import random
                 anti_race_delay = random.randint(1500, 5000)
                 log.info(f"Jeda anti-race condition {anti_race_delay} ms sebelum re-check DOM...")
                 await page.wait_for_timeout(anti_race_delay)
