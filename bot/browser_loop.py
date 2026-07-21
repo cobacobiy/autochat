@@ -261,7 +261,10 @@ async def run_bot():
                         # Cek apakah halaman crash / blank putih (Aw Snap / Out of Memory)
                         try:
                             # Menggunakan textContent agar overlay loading Shopee tidak membuatnya terbaca kosong
-                            body_text = await page.evaluate("document.body ? document.body.textContent.trim() : ''")
+                            body_text = await asyncio.wait_for(
+                                page.evaluate("document.body ? document.body.textContent.trim() : ''"), 
+                                timeout=10.0
+                            )
                             is_blank = len(body_text) < 50  # Halaman tidak merender DOM sama sekali
                             has_crash_text = "Aw, Snap!" in body_text or "Error code:" in body_text or "STATUS_BREAKPOINT" in body_text
                             
@@ -272,7 +275,7 @@ async def run_bot():
                                     log.warning("🚨 Muncul popup error dari Shopee. Menandai untuk reload...")
                                     has_crash_text = True
                                 else:
-                                    html_content = (await page.content()).lower()
+                                    html_content = (await asyncio.wait_for(page.content(), timeout=10.0)).lower()
                                     has_error = "terjadi kesalahan" in html_content or "an error occurred" in html_content or "something went wrong" in html_content
                                     has_retry = "coba lagi" in html_content or "try again" in html_content or "memuat halaman" in html_content
                                     if has_error and has_retry:
@@ -296,8 +299,26 @@ async def run_bot():
                                 except Exception as reload_err:
                                     log.error("Gagal saat mencoba force reload halaman blank: %s", reload_err)
                                 continue # Lanjut iterasi baru agar tidak mengeksekusi handle_unread_chats di DOM yang kosong
+                        except asyncio.TimeoutError:
+                            log.warning("🚨 Timeout saat membaca DOM! Kemungkinan renderer hang/crash. Memaksa reload...")
+                            is_blank = True
+                            has_crash_text = True
+                            await do_human_delay(page, 3000, 7000)
+                            try:
+                                await page.goto("https://seller.shopee.co.id/", wait_until="domcontentloaded", timeout=30000)
+                                await page.wait_for_timeout(3000)
+                                await page.goto(SHOPEE_CHAT_URL, wait_until="domcontentloaded", timeout=30000)
+                                await page.wait_for_timeout(5000)
+                                bot_state.has_setup_tabs = False
+                            except Exception as reload_err:
+                                log.error("Gagal saat mencoba force reload halaman blank: %s", reload_err)
+                            continue
                         except Exception as e:
                             log.warning("Gagal mengecek status halaman blank: %s", e)
+                            # Jika evaluate gagal total (biasanya TargetClosedError), anggap crash
+                            if "target closed" in str(e).lower() or "execution context" in str(e).lower():
+                                is_blank = True
+                                has_crash_text = True
 
                         # Check if main tab is stuck on captcha/error
                         if "captcha" in page.url.lower() or "error" in page.url.lower() or "verify" in page.url.lower():
