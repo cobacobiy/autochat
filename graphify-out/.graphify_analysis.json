@@ -1,0 +1,221 @@
+{
+  "communities": {
+    "0": [
+      "bot_browser_loop",
+      "bot_browser_loop_run_bot",
+      "bot_chat_navigation",
+      "bot_chat_navigation_py_page",
+      "bot_chat_navigation_rationale_9",
+      "bot_chat_navigation_setup_chat_view",
+      "bot_chat_sender",
+      "bot_shopee_browser",
+      "bot_shopee_browser_handle_unread_chats",
+      "bot_shopee_browser_py_page",
+      "bot_tests_test_utils_test_is_assistant_ai_msg",
+      "bot_utils",
+      "bot_utils_cleanup_old_screenshots",
+      "bot_utils_do_human_delay",
+      "bot_utils_is_assistant_ai_msg",
+      "bot_utils_rationale_20"
+    ],
+    "1": [
+      "basehttprequesthandler",
+      "bot_config",
+      "bot_config_load_js",
+      "bot_health",
+      "bot_health_healthhandler",
+      "bot_health_healthhandler_do_get",
+      "bot_health_healthhandler_log_message",
+      "bot_health_start_health_server",
+      "bot_main",
+      "bot_main_jsonformatter",
+      "bot_main_jsonformatter_format",
+      "bot_main_rationale_1",
+      "bot_tests_test_config",
+      "bot_tests_test_config_test_config_defaults"
+    ],
+    "2": [
+      "bot_ai_engine",
+      "bot_ai_engine_build_system_prompt",
+      "bot_ai_engine_call_ai_api",
+      "bot_ai_engine_clean_ai_reply",
+      "bot_ai_engine_get_ai_reply",
+      "bot_ai_engine_get_auto_reply",
+      "bot_ai_engine_rationale_16",
+      "bot_tests_test_ai_engine",
+      "bot_tests_test_ai_engine_test_get_ai_reply_gemini",
+      "bot_tests_test_ai_engine_test_get_ai_reply_ollama",
+      "bot_tests_test_utils",
+      "bot_tests_test_utils_test_clean_ai_reply",
+      "bot_tests_test_utils_test_get_auto_reply"
+    ],
+    "3": [
+      "bot_knowledge",
+      "bot_knowledge_parse_knowledge_answers",
+      "bot_knowledge_rationale_19",
+      "bot_knowledge_reload_knowledge",
+      "bot_state",
+      "bot_state_botstate",
+      "bot_tests_test_knowledge",
+      "bot_tests_test_knowledge_test_parse_knowledge_answers",
+      "bot_tests_test_knowledge_test_parse_knowledge_answers_ignore_comments"
+    ],
+    "4": [
+      "bot_chat_sender_py_page",
+      "bot_chat_sender_rationale_10",
+      "bot_chat_sender_send_reply",
+      "bot_tests_test_chat_sender",
+      "bot_tests_test_chat_sender_test_send_reply_no_input",
+      "bot_tests_test_chat_sender_test_send_reply_success"
+    ],
+    "5": [
+      "bot_chat_parser",
+      "bot_chat_parser_extract_chat_history",
+      "bot_chat_parser_py_page",
+      "bot_chat_parser_read_riwayat_chat"
+    ],
+    "6": [
+      "bot_js_is_seller",
+      "bot_js_is_seller_isseller"
+    ],
+    "7": [
+      "bot_tests_conftest",
+      "bot_tests_conftest_mock_page"
+    ],
+    "8": [
+      "bot_init"
+    ],
+    "9": [
+      "bot_js_get_chat_items"
+    ],
+    "10": [
+      "bot_tests_init"
+    ]
+  },
+  "cohesion": {
+    "0": 0.275,
+    "1": 0.17582417582417584,
+    "2": 0.2948717948717949,
+    "3": 0.3611111111111111,
+    "4": 0.4666666666666667,
+    "5": 0.6666666666666666,
+    "6": 1.0,
+    "7": 1.0,
+    "8": 1.0,
+    "9": 1.0,
+    "10": 1.0
+  },
+  "gods": [
+    {
+      "id": "bot_shopee_browser_handle_unread_chats",
+      "label": "handle_unread_chats()",
+      "degree": 10
+    },
+    {
+      "id": "bot_ai_engine_get_ai_reply",
+      "label": "get_ai_reply()",
+      "degree": 9
+    },
+    {
+      "id": "bot_chat_sender_send_reply",
+      "label": "send_reply()",
+      "degree": 9
+    },
+    {
+      "id": "bot_utils_do_human_delay",
+      "label": "do_human_delay()",
+      "degree": 9
+    },
+    {
+      "id": "bot_browser_loop_run_bot",
+      "label": "run_bot()",
+      "degree": 6
+    },
+    {
+      "id": "bot_chat_navigation_setup_chat_view",
+      "label": "setup_chat_view()",
+      "degree": 6
+    },
+    {
+      "id": "bot_utils_is_assistant_ai_msg",
+      "label": "is_assistant_ai_msg()",
+      "degree": 6
+    },
+    {
+      "id": "bot_ai_engine_get_auto_reply",
+      "label": "get_auto_reply()",
+      "degree": 5
+    },
+    {
+      "id": "bot_health_healthhandler",
+      "label": "HealthHandler",
+      "degree": 5
+    },
+    {
+      "id": "bot_knowledge_parse_knowledge_answers",
+      "label": "parse_knowledge_answers()",
+      "degree": 5
+    }
+  ],
+  "surprises": [
+    {
+      "source": "test_get_auto_reply()",
+      "target": "get_auto_reply()",
+      "source_files": [
+        "bot/tests/test_utils.py",
+        "bot/ai_engine.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "peripheral node `test_get_auto_reply()` unexpectedly reaches hub `get_auto_reply()`"
+    },
+    {
+      "source": "handle_unread_chats()",
+      "target": "get_ai_reply()",
+      "source_files": [
+        "bot/shopee_browser.py",
+        "bot/ai_engine.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "test_get_ai_reply_gemini()",
+      "target": "get_ai_reply()",
+      "source_files": [
+        "bot/tests/test_ai_engine.py",
+        "bot/ai_engine.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "peripheral node `test_get_ai_reply_gemini()` unexpectedly reaches hub `get_ai_reply()`"
+    },
+    {
+      "source": "test_get_ai_reply_ollama()",
+      "target": "get_ai_reply()",
+      "source_files": [
+        "bot/tests/test_ai_engine.py",
+        "bot/ai_engine.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "peripheral node `test_get_ai_reply_ollama()` unexpectedly reaches hub `get_ai_reply()`"
+    },
+    {
+      "source": "run_bot()",
+      "target": "reload_knowledge()",
+      "source_files": [
+        "bot/browser_loop.py",
+        "bot/knowledge.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}
