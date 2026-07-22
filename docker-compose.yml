@@ -24,7 +24,7 @@ services:
       - SHOPEE_USERNAME=${BOT1_SHOPEE_USERNAME:-}
       - SHOPEE_PASSWORD=${BOT1_SHOPEE_PASSWORD:-}
     volumes:
-      - ./profiles/bot1:/data/shopee-profile
+      - profile-bot1:/data/shopee-profile
       - ./logs/bot1:/data/logs
       - ./store_knowledge.txt:/app/store_knowledge.txt
       - ./unanswered_questions.txt:/app/unanswered_questions.txt
@@ -64,7 +64,7 @@ services:
       - SHOPEE_PASSWORD=${BOT2_SHOPEE_PASSWORD:-}
 
     volumes:
-      - ./profiles/bot2:/data/shopee-profile
+      - profile-bot2:/data/shopee-profile
       - ./logs/bot2:/data/logs
       - ./store_knowledge.txt:/app/store_knowledge.txt
       - ./unanswered_questions.txt:/app/unanswered_questions.txt
@@ -103,7 +103,7 @@ services:
       - SHOPEE_USERNAME=${BOT3_SHOPEE_USERNAME:-}
       - SHOPEE_PASSWORD=${BOT3_SHOPEE_PASSWORD:-}
     volumes:
-      - ./profiles/bot3:/data/shopee-profile
+      - profile-bot3:/data/shopee-profile
       - ./logs/bot3:/data/logs
       - ./store_knowledge.txt:/app/store_knowledge.txt
       - ./unanswered_questions.txt:/app/unanswered_questions.txt
@@ -179,7 +179,7 @@ services:
 #      - SHOPEE_USERNAME=${BOT4_SHOPEE_USERNAME:-}
 #      - SHOPEE_PASSWORD=${BOT4_SHOPEE_PASSWORD:-}
 #    volumes:
-#      - ./profiles/bot4:/data/shopee-profile
+#      - profile-bot4:/data/shopee-profile
 #      - ./logs/bot4:/data/logs
 #      - ./store_knowledge.txt:/app/store_knowledge.txt
 #      - ./unanswered_questions.txt:/app/unanswered_questions.txt
@@ -218,7 +218,7 @@ services:
 #      - SHOPEE_USERNAME=${BOT5_SHOPEE_USERNAME:-}
 #      - SHOPEE_PASSWORD=${BOT5_SHOPEE_PASSWORD:-}
 #    volumes:
-#      - ./profiles/bot5:/data/shopee-profile
+#      - profile-bot5:/data/shopee-profile
 #      - ./logs/bot5:/data/logs
 #      - ./store_knowledge.txt:/app/store_knowledge.txt
 #      - ./unanswered_questions.txt:/app/unanswered_questions.txt
@@ -257,7 +257,7 @@ services:
 #      - SHOPEE_USERNAME=${BOT6_SHOPEE_USERNAME:-}
 #      - SHOPEE_PASSWORD=${BOT6_SHOPEE_PASSWORD:-}
 #    volumes:
-#      - ./profiles/bot6:/data/shopee-profile
+#      - profile-bot6:/data/shopee-profile
 #      - ./logs/bot6:/data/logs
 #      - ./store_knowledge.txt:/app/store_knowledge.txt
 #      - ./unanswered_questions.txt:/app/unanswered_questions.txt
@@ -284,3 +284,9 @@ volumes:
   ollama-data:
 
 
+  profile-bot1:
+  profile-bot2:
+  profile-bot3:
+#  profile-bot4:
+#  profile-bot5:
+#  profile-bot6:
