@@ -11,6 +11,8 @@ bot-profile-preview/
 *.diff
 
 # Temporary refactoring scripts
+patch.py
+bot_main_from_main.py
 patch_*.py
 split_*.py
 fix_*.py
@@ -32,3 +34,5 @@ gh_log.txt
 profiles/
 unanswered_questions.txt
 .ruff_cache/
+output.log
+temp_log.txt
