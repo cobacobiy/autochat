@@ -12,7 +12,7 @@ from playwright.async_api import async_playwright
 from bot.config import (
     LOG_DIR, PROFILE_DIR, SHOPEE_CHAT_URL, POLL_INTERVAL_SECONDS, MAX_CACHE_SIZE, 
     SHOPEE_USERNAME, SHOPEE_PASSWORD, BROWSER_LIFETIME_SECONDS, KNOWLEDGE_RELOAD_CYCLES,
-    CACHE_EXPIRY_SECONDS, HEARTBEAT_CYCLES
+    CACHE_EXPIRY_SECONDS, HEARTBEAT_CYCLES, MAX_DAILY_REPLIES
 )
 from bot.state import bot_state
 from bot.knowledge import reload_knowledge
@@ -220,9 +220,35 @@ async def run_bot():
                             break
                         current_date = datetime.now().strftime("%Y-%m-%d")
                         if current_date != bot_state.daily_reply_date:
+                            if bot_state.daily_reply_date:
+                                try:
+                                    report_dir = os.path.join(LOG_DIR, "reports")
+                                    os.makedirs(report_dir, exist_ok=True)
+                                    report_file = os.path.join(report_dir, f"report_{bot_state.daily_reply_date}.txt")
+                                    report_content = (
+                                        f"=== Laporan Harian Autochat ===\n"
+                                        f"Tanggal       : {bot_state.daily_reply_date}\n"
+                                        f"---------------------------------\n"
+                                        f"Total Dibalas AI  : {bot_state.daily_ai_replied_count}\n"
+                                        f"Total Dilewati    : {bot_state.daily_skip_count} (Bukan pertanyaan/spam)\n"
+                                        f"Total Masuk Antrean: {bot_state.daily_unanswered_count} (Gagal dijawab AI)\n"
+                                        f"Total Limit API   : {bot_state.daily_reply_counter} / {MAX_DAILY_REPLIES}\n"
+                                    )
+                                    with open(report_file, "w", encoding="utf-8") as f:
+                                        f.write(report_content)
+                                    log.info("Laporan harian berhasil disimpan ke %s", report_file)
+                                except Exception as e:
+                                    log.error("Gagal menyimpan laporan harian: %s", e)
+                                
+                                # Reset stat counters
+                                bot_state.daily_reply_counter = 0
+                                bot_state.daily_skip_count = 0
+                                bot_state.daily_unanswered_count = 0
+                                bot_state.daily_ai_replied_count = 0
+
                             bot_state.daily_reply_date = current_date
                             bot_state.sent_messages.clear()
-                            log.info("Daily reset: Cleared bot_state.sent_messages cache.")
+                            log.info("Daily reset: Cleared bot_state.sent_messages cache and reset counters.")
 
                         # Enforce MAX_CACHE_SIZE limit
                         if len(bot_state.replied_cache) > MAX_CACHE_SIZE:

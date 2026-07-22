@@ -23,15 +23,6 @@ log = logging.getLogger(__name__)
 
 async def handle_unread_chats(page: Page) -> int:
     current_date = time.strftime("%Y-%m-%d")
-    if bot_state.daily_reply_date != current_date:
-        if bot_state.daily_reply_date:
-            log.info("📊 Daily summary [%s]: replied=%d, skipped=%d, unanswered=%d", 
-                     bot_state.daily_reply_date, bot_state.daily_ai_replied_count, bot_state.daily_skip_count, bot_state.daily_unanswered_count)
-        bot_state.daily_reply_date = current_date
-        bot_state.daily_reply_counter = 0
-        bot_state.daily_skip_count = 0
-        bot_state.daily_unanswered_count = 0
-        bot_state.daily_ai_replied_count = 0
 
     processed = 0
     try:
