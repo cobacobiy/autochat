@@ -10,16 +10,6 @@ bot-profile-preview/
 *.html
 *.diff
 
-# Excluded manually
-.ruff_cache/
-output.log
-patch.py
-bot_main_from_main.py
-temp_log.txt
-gen_key.ps1
-gh_log.txt
-unanswered_questions.txt
-
 # Temporary refactoring scripts
 patch_*.py
 split_*.py
@@ -28,3 +18,17 @@ extract_*.py
 restore_*.py
 temp_*.py
 refactor_*.py
+
+# Exclude local logs and temporary artifacts
+*.log
+bot_head.txt
+docker_ps.txt
+screenshot.b64
+temp.yml
+temp_bot_log.txt
+temp_logs.txt
+gen_key.ps1
+gh_log.txt
+profiles/
+unanswered_questions.txt
+.ruff_cache/
