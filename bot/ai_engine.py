@@ -116,6 +116,7 @@ async def _call_ai_api(system_prompt: str, buyer_message: str) -> str:
                     {"role": "user", "content": buyer_message}
                 ],
                 "stream": False,
+                "keep_alive": "2h",
                 "options": {"temperature": 0.0, "top_p": 0.1, "num_predict": 200}
             })
             

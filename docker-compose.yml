@@ -120,6 +120,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=2h
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
