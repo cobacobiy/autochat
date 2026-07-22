@@ -22,8 +22,6 @@ from bot.chat_sender import send_reply
 log = logging.getLogger(__name__)
 
 async def handle_unread_chats(page: Page) -> int:
-    current_date = time.strftime("%Y-%m-%d")
-
     processed = 0
     try:
         setup_success = await setup_chat_view(page)
