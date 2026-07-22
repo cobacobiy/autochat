@@ -121,7 +121,7 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     environment:
-      - OLLAMA_KEEP_ALIVE=2h
+      - OLLAMA_KEEP_ALIVE=1h
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
