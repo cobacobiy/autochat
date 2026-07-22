@@ -82,10 +82,13 @@ async def run_bot():
                                 "--disable-dev-shm-usage",
                                 "--disable-blink-features=AutomationControlled",
                                 "--disable-gpu",
-                                "--js-flags=--max-old-space-size=4096",
+                                "--js-flags=--max-old-space-size=1024",
                                 "--hide-crash-restore-bubble",
+                                "--disable-features=site-per-process",
+                                "--disable-software-rasterizer",
+                                "--mute-audio",
                             ],
-                            viewport={"width": 1920, "height": 1080},
+                            viewport={"width": 1280, "height": 720},
                         ),
                         timeout=60.0
                     )

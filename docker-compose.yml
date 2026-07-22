@@ -36,7 +36,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 3g
 
   shopee-bot-2:
     image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
@@ -76,7 +76,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 3g
 
   shopee-bot-3:
     image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
@@ -115,7 +115,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 3g
 
   ollama:
     image: ollama/ollama:latest
