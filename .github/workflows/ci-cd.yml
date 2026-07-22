@@ -217,6 +217,8 @@ jobs:
             --exclude '.env' \
             --exclude 'store_knowledge.txt' \
             --exclude 'unanswered_questions.txt' \
+            --exclude 'profiles' \
+            --exclude 'logs' \
             ./ "$TARGET_DIR/"
             
           # 3. Pastikan file data eksis (buat kosong jika belum ada)
