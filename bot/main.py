@@ -6,12 +6,12 @@ Runs as a daemon using Playwright persistent context for session persistence.
 import asyncio
 import logging
 import os
-import sys
 import shutil
+import sys
 
-from bot.config import LOG_DIR, LOG_FORMAT, UNANSWERED_PATH, KNOWLEDGE_PATH
-from bot.health import start_health_server
 from bot.browser_loop import run_bot
+from bot.config import KNOWLEDGE_PATH, LOG_DIR, LOG_FORMAT, UNANSWERED_PATH
+from bot.health import start_health_server
 
 # ── Logging & Directory setup ──────────────────────────────────────────────────
 os.makedirs(LOG_DIR, exist_ok=True)

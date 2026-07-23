@@ -1,5 +1,7 @@
 import logging
+
 from playwright.async_api import Page
+
 from bot.state import bot_state
 from bot.utils import do_human_delay
 

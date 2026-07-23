@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, Set
+
 
 @dataclass
 class BotState:
@@ -9,8 +9,8 @@ class BotState:
     daily_unanswered_count: int = 0
     daily_ai_replied_count: int = 0
     has_setup_tabs: bool = False
-    replied_cache: Dict[str, float] = field(default_factory=dict)
-    sent_messages: Dict[str, Set[str]] = field(default_factory=dict)
+    replied_cache: dict[str, float] = field(default_factory=dict)
+    sent_messages: dict[str, set[str]] = field(default_factory=dict)
     knowledge_base: str = ""
     knowledge_answers: dict = field(default_factory=dict)
 

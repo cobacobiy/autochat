@@ -1,12 +1,13 @@
 import logging
+
+from playwright.async_api import Page
+
 from bot.config import FORCE_RELOAD
 from bot.utils import do_human_delay
-from typing import Union
-from playwright.async_api import Page
 
 log = logging.getLogger(__name__)
 
-async def send_reply(page: Page, reply_text: str, username: str) -> Union[bool, int]:
+async def send_reply(page: Page, reply_text: str, username: str) -> bool | int:
     """Kirim balasan chat ke pembeli.
     
     Args:

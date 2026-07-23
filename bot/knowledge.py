@@ -1,7 +1,8 @@
-import os
 import logging
-from bot.state import bot_state
+import os
+
 from bot.config import KNOWLEDGE_PATH
+from bot.state import bot_state
 
 log = logging.getLogger(__name__)
 

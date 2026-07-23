@@ -1,23 +1,32 @@
 import asyncio
 import logging
 import os
+import random
 import signal
 import subprocess
 import time
-import random
 from datetime import datetime
 
 from playwright.async_api import async_playwright
 
 from bot.config import (
-    LOG_DIR, PROFILE_DIR, SHOPEE_CHAT_URL, POLL_INTERVAL_SECONDS, MAX_CACHE_SIZE, 
-    SHOPEE_USERNAME, SHOPEE_PASSWORD, BROWSER_LIFETIME_SECONDS, KNOWLEDGE_RELOAD_CYCLES,
-    CACHE_EXPIRY_SECONDS, HEARTBEAT_CYCLES, MAX_DAILY_REPLIES
+    BROWSER_LIFETIME_SECONDS,
+    CACHE_EXPIRY_SECONDS,
+    HEARTBEAT_CYCLES,
+    KNOWLEDGE_RELOAD_CYCLES,
+    LOG_DIR,
+    MAX_CACHE_SIZE,
+    MAX_DAILY_REPLIES,
+    POLL_INTERVAL_SECONDS,
+    PROFILE_DIR,
+    SHOPEE_CHAT_URL,
+    SHOPEE_PASSWORD,
+    SHOPEE_USERNAME,
 )
-from bot.state import bot_state
 from bot.knowledge import reload_knowledge
-from bot.utils import do_human_delay, cleanup_old_screenshots
 from bot.shopee_browser import handle_unread_chats
+from bot.state import bot_state
+from bot.utils import cleanup_old_screenshots, do_human_delay
 
 log = logging.getLogger(__name__)
 

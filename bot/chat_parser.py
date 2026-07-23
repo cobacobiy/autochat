@@ -1,5 +1,7 @@
 import logging
+
 from playwright.async_api import Page
+
 from bot.config import IS_SELLER_JS, SHOPEE_CHAT_URL
 
 log = logging.getLogger(__name__)

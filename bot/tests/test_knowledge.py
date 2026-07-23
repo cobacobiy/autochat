@@ -1,6 +1,7 @@
 from bot.knowledge import parse_knowledge_answers
 from bot.state import bot_state
 
+
 def test_parse_knowledge_answers():
     bot_state.knowledge_base = "bisa cod? | Ya, bisa kak\nharga grosir? | Cek etalase kak"
     parse_knowledge_answers()

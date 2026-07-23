@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 LOG_DIR = os.getenv("LOG_DIR", "/data/logs")
 LOG_FORMAT = os.getenv("LOG_FORMAT", "text").lower()

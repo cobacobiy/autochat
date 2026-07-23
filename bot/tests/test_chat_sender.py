@@ -1,6 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from bot.chat_sender import send_reply
+
 
 @pytest.mark.asyncio
 async def test_send_reply_success(mock_page):

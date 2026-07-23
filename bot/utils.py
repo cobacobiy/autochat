@@ -1,7 +1,7 @@
-import random
-import os
-import time
 import logging
+import os
+import random
+import time
 
 log = logging.getLogger(__name__)
 

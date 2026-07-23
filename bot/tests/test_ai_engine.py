@@ -1,6 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+
 from bot.ai_engine import get_ai_reply
+
 
 @pytest.mark.asyncio
 async def test_get_ai_reply_ollama():

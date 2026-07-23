@@ -1,13 +1,25 @@
-import re
-import httpx
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import re
 
-from bot.state import bot_state
-from bot.config import (
-    AUTO_REPLIES, AI_PROVIDER, OLLAMA_URL, OLLAMA_MODEL, 
-    GEMINI_API_KEY, GEMINI_MODEL, ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
 )
+
+from bot.config import (
+    AI_PROVIDER,
+    ANTHROPIC_API_KEY,
+    ANTHROPIC_MODEL,
+    AUTO_REPLIES,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+    OLLAMA_MODEL,
+    OLLAMA_URL,
+)
+from bot.state import bot_state
 
 log = logging.getLogger(__name__)
 

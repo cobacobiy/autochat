@@ -1,23 +1,30 @@
 import logging
-import time
 import os
 import random
 import re
+import time
 from datetime import datetime
+
 from playwright.async_api import Page
 
-from bot.config import (
-    AUTO_REPLIES, DEFAULT_REPLY, LOG_DIR,
-    SKIP_MESSAGES, ADMIN_KEYWORDS, GET_CHAT_ITEMS_JS,
-    UNANSWERED_PATH, MAX_DAILY_REPLIES,
-    FORCE_RELOAD, MAX_CHAT_SCAN_ATTEMPTS
-)
-from bot.state import bot_state
-from bot.utils import do_human_delay, is_assistant_ai_msg
 from bot.ai_engine import get_ai_reply
 from bot.chat_navigation import setup_chat_view
 from bot.chat_parser import extract_chat_history
 from bot.chat_sender import send_reply
+from bot.config import (
+    ADMIN_KEYWORDS,
+    AUTO_REPLIES,
+    DEFAULT_REPLY,
+    FORCE_RELOAD,
+    GET_CHAT_ITEMS_JS,
+    LOG_DIR,
+    MAX_CHAT_SCAN_ATTEMPTS,
+    MAX_DAILY_REPLIES,
+    SKIP_MESSAGES,
+    UNANSWERED_PATH,
+)
+from bot.state import bot_state
+from bot.utils import do_human_delay, is_assistant_ai_msg
 
 log = logging.getLogger(__name__)
 
