@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>autochat — Complete Call Flow &amp; Architecture Documentation</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+  --bg: #0f172a; --surface: #1e293b; --border: #334155;
+  --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
+  --warn: #fbbf24; --err: #f87171; --ok: #34d399;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+h1 { font-size: 2.4rem; margin-bottom: 8px; background: linear-gradient(135deg, var(--accent), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 1.7rem; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+h3 { font-size: 1.25rem; margin: 32px 0 12px; color: var(--accent); }
+h4 { font-size: 1.05rem; margin: 20px 0 8px; color: var(--warn); }
+p { margin: 8px 0; color: var(--muted); }
+.subtitle { color: var(--muted); font-size: 1.1rem; margin-bottom: 32px; }
+.mermaid { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 20px 0; overflow-x: auto; position: relative; }
+.mermaid.is-enhanced { padding: 0; overflow: hidden; min-height: 260px; }
+.mermaid-viewport { padding: 54px 24px 24px; overflow: hidden; cursor: grab; touch-action: none; min-height: 260px; }
+.mermaid-viewport.is-dragging { cursor: grabbing; }
+.mermaid-viewport svg { max-width: none !important; height: auto; transform-origin: 0 0; transition: transform 120ms ease; }
+.mermaid-toolbar { position: absolute; top: 10px; right: 10px; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 6px; background: rgba(15,23,42,0.92); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
+.mermaid-toolbar button, .mermaid-toolbar .zoom-level { height: 28px; min-width: 32px; border: 1px solid var(--border); border-radius: 6px; background: #1e293b; color: var(--text); font: 600 0.78rem system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+.mermaid-toolbar button { cursor: pointer; }
+.mermaid-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+.mermaid-toolbar .zoom-level { min-width: 52px; color: var(--muted); background: transparent; }
+.call-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92rem; }
+.call-table th { background: #1a2744; color: var(--accent); text-align: left; padding: 10px 14px; border: 1px solid var(--border); }
+.call-table td { padding: 8px 14px; border: 1px solid var(--border); vertical-align: top; }
+.call-table tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+.tag-async { background: #7c3aed33; color: #a78bfa; }
+.tag-class { background: #05966933; color: var(--ok); }
+.tag-func { background: #2563eb33; color: var(--accent); }
+.tag-cmd { background: #d9770633; color: var(--warn); }
+.tag-endpoint { background: #dc262633; color: var(--err); }
+.tag-hook { background: #db277733; color: #f472b6; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 16px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin: 16px 0; }
+.arrow-chain { font-family: 'Fira Code', monospace; font-size: 0.85rem; color: var(--accent); padding: 10px; background: rgba(56,189,248,0.06); border-radius: 6px; }
+code { font-family: 'Fira Code', 'Cascadia Code', monospace; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 3px; font-size: 0.88em; }
+ul, ol { margin: 8px 0 8px 24px; color: var(--muted); }
+li { margin: 4px 0; }
+a { color: var(--accent); }
+hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+.nav { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.9rem; }
+.nav a { text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+@media (max-width: 768px) { .container { padding: 16px; } h1 { font-size: 1.8rem; } }
+
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>autochat — Complete Call Flow &amp; Architecture Documentation</h1>
+<p class="subtitle">Generated from graphify knowledge graph: 69 nodes, 128 edges, 11 communities. Commit: unknown</p>
+
+<div class="nav">
+    <a href="#overview">Architecture Overview</a>
+    <a href="#extract-pipeline">Extraction Pipeline</a>
+    <a href="#tests-fixtures">Tests &amp; Fixtures</a>
+    <a href="#sellerjs-bot-isseller">Sellerjs Bot Isseller</a>
+    <a href="#bot">Bot</a>
+    <a href="#get-chat-itemsjs">Get Chat Itemsjs</a>
+</div>
+
+<!-- ====== Architecture Overview ====== -->
+<h2 id="overview">1. Architecture Overview</h2>
+
+<div class="mermaid">
+
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    EXTRACT_PIPELINE_5F350230("Extraction Pipeline<br/><small>4 nodes</small>")
+    class EXTRACT_PIPELINE_5F350230 module;
+    TESTS_FIXTURES_B84B1DCC("Tests &amp; Fixtures<br/><small>61 nodes</small>")
+    class TESTS_FIXTURES_B84B1DCC module;
+    SELLERJS_BOT_ISSELLER_B15F3B14("Sellerjs Bot Isseller<br/><small>2 nodes</small>")
+    class SELLERJS_BOT_ISSELLER_B15F3B14 module;
+    BOT_C71E7261("Bot<br/><small>1 nodes</small>")
+    class BOT_C71E7261 module;
+    GET_CHAT_ITEMSJS_098EBE13("Get Chat Itemsjs<br/><small>1 nodes</small>")
+    class GET_CHAT_ITEMSJS_098EBE13 module;
+    EXTRACT_PIPELINE_5F350230 -->|imports x4| TESTS_FIXTURES_B84B1DCC
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h4>Architecture Layers</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>Layer</th><th>Nodes</th><th>Communities</th></tr>
+      <tr><td>Extraction Pipeline</td><td>4</td><td><code>5</code></td></tr><tr><td>Tests &amp; Fixtures</td><td>61</td><td><code>0, 1, 2, 3, 4, 7, 10</code></td></tr><tr><td>Sellerjs Bot Isseller</td><td>2</td><td><code>6</code></td></tr><tr><td>Bot</td><td>1</td><td><code>8</code></td></tr><tr><td>Get Chat Itemsjs</td><td>1</td><td><code>9</code></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Core Flow</h4>
+    <div class="arrow-chain">Extraction Pipeline -&gt; Tests &amp; Fixtures -&gt; Sellerjs Bot Isseller -&gt; Bot -&gt; Get Chat Itemsjs</div>
+  </div>
+</div>
+<hr>
+<!-- ====== 2. Extraction Pipeline ====== -->
+<h2 id="extract-pipeline">2. Extraction Pipeline</h2>
+<p>Extraction Pipeline groups implementation around chat, parserpy, bot, read, mostly in bot/chat_parser.py. This section covers 4 nodes and 4 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Extraction Pipeline (4 nodes, 4 edges)
+    subgraph extract_pipeline_bot_chat_parser_py_ff4fad7c["bot/chat_parser.py"]
+        bot_chat_parser_aefbb642("chat_parser.py")
+        bot_chat_parser_read_riwayat_chat_9882cd3d("read_riwayat_chat()<br/><small>bot/chat_parser.py</small>")
+        bot_chat_parser_extract_chat_history_b1191e68("extract_chat_history()<br/><small>bot/chat_parser.py</small>")
+    end
+    bot_chat_parser_py_page_de0babd5("Page")
+    bot_chat_parser_read_riwayat_chat_9882cd3d -->|references| bot_chat_parser_py_page_de0babd5
+    bot_chat_parser_py_page_de0babd5 -->|references| bot_chat_parser_extract_chat_history_b1191e68
+    bot_chat_parser_aefbb642 -->|contains| bot_chat_parser_extract_chat_history_b1191e68
+    bot_chat_parser_aefbb642 -->|contains| bot_chat_parser_read_riwayat_chat_9882cd3d
+    class bot_chat_parser_aefbb642 module;
+    class bot_chat_parser_read_riwayat_chat_9882cd3d function;
+    class bot_chat_parser_extract_chat_history_b1191e68 function;
+    class bot_chat_parser_py_page_de0babd5 klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>chat_parser.py</code><br><small style="color:var(--muted)">bot/chat_parser.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Module file in bot/chat_parser.py.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>read_riwayat_chat()</code><br><small style="color:var(--muted)">bot/chat_parser.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>Page</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>extract_chat_history()</code><br><small style="color:var(--muted)">bot/chat_parser.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>bot/chat_parser.py</code></td><td>3 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x2, references x2. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 3. Tests & Fixtures ====== -->
+<h2 id="tests-fixtures">3. Tests &amp; Fixtures</h2>
+<p>Tests &amp; Fixtures groups implementation around bot, test, tests, chat, mostly in bot/ai_engine.py, bot/utils.py, bot/health.py. This section covers 61 nodes and 119 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Tests &amp; Fixtures (61 nodes, 119 edges)
+    subgraph tests_fixtures_bot_ai_engine_py_f7cc8c08["bot/ai_engine.py"]
+        bot_ai_engine_e8d862d2("ai_engine.py")
+        bot_ai_engine_get_auto_reply_3377ab31("get_auto_reply()<br/><small>bot/ai_engine.py</small>")
+        bot_ai_engine_get_ai_reply_80204182("get_ai_reply()<br/><small>bot/ai_engine.py</small>")
+        bot_ai_engine_build_system_prompt_824c0e4b("build_system_prompt()<br/><small>bot/ai_engine.py</small>")
+        bot_ai_engine_call_ai_api_93bdf3a1("_call_ai_api()<br/><small>bot/ai_engine.py</small>")
+        bot_ai_engine_clean_ai_reply_37ba4f4a("_clean_ai_reply()<br/><small>bot/ai_engine.py</small>")
+    end
+    subgraph tests_fixtures_bot_browser_loop_py_9814e942["bot/browser_loop.py"]
+        bot_browser_loop_5f21a2c9("browser_loop.py")
+        bot_browser_loop_run_bot_2fc7148d("run_bot()<br/><small>bot/browser_loop.py</small>")
+    end
+    subgraph tests_fixtures_bot_chat_sender_py_cf833516["bot/chat_sender.py"]
+        bot_chat_sender_send_reply_d62e9e8d("send_reply()<br/><small>bot/chat_sender.py</small>")
+        bot_chat_sender_e6e5038a("chat_sender.py")
+    end
+    subgraph tests_fixtures_bot_tests_test_ai_engine_py_b1ad9fa4["bot/tests/test_ai_engine.py"]
+        bot_tests_test_ai_engine_test_get_ai_reply_gemin_02cdf69b("test_get_ai_reply_gemini()<br/><small>bot/tests/test_ai_engine.py</small>")
+        bot_tests_test_ai_engine_test_get_ai_reply_ollam_aa2bd42b("test_get_ai_reply_ollama()<br/><small>bot/tests/test_ai_engine.py</small>")
+    end
+    subgraph tests_fixtures_bot_tests_test_utils_py_8a3dcbdc["bot/tests/test_utils.py"]
+        bot_tests_test_utils_test_get_auto_reply_3a5686df("test_get_auto_reply()<br/><small>bot/tests/test_utils.py</small>")
+        bot_tests_test_utils_test_clean_ai_reply_8f24b31e("test_clean_ai_reply()<br/><small>bot/tests/test_utils.py</small>")
+    end
+    bot_chat_navigation_a39cca3f("chat_navigation.py")
+    bot_knowledge_reload_knowledge_e923bbd1("reload_knowledge()<br/><small>bot/knowledge.py</small>")
+    bot_shopee_browser_handle_unread_chats_003b60aa("handle_unread_chats()<br/><small>bot/shopee_browser.py</small>")
+    bot_utils_cleanup_old_screenshots_d520f567("cleanup_old_screenshots()<br/><small>bot/utils.py</small>")
+    bot_ai_engine_get_auto_reply_3377ab31 -->|calls| bot_ai_engine_get_ai_reply_80204182
+    bot_ai_engine_get_auto_reply_3377ab31 -->|calls| bot_tests_test_utils_test_get_auto_reply_3a5686df
+    bot_ai_engine_build_system_prompt_824c0e4b -->|calls| bot_ai_engine_get_ai_reply_80204182
+    bot_ai_engine_call_ai_api_93bdf3a1 -->|calls| bot_ai_engine_clean_ai_reply_37ba4f4a
+    bot_ai_engine_call_ai_api_93bdf3a1 -->|calls| bot_ai_engine_get_ai_reply_80204182
+    bot_ai_engine_get_ai_reply_80204182 -->|calls| bot_shopee_browser_handle_unread_chats_003b60aa
+    bot_ai_engine_get_ai_reply_80204182 -->|calls| bot_tests_test_ai_engine_test_get_ai_reply_gemin_02cdf69b
+    bot_ai_engine_get_ai_reply_80204182 -->|calls| bot_tests_test_ai_engine_test_get_ai_reply_ollam_aa2bd42b
+    bot_ai_engine_clean_ai_reply_37ba4f4a -->|calls| bot_tests_test_utils_test_clean_ai_reply_8f24b31e
+    bot_browser_loop_run_bot_2fc7148d -->|calls| bot_knowledge_reload_knowledge_e923bbd1
+    bot_browser_loop_run_bot_2fc7148d -->|calls| bot_shopee_browser_handle_unread_chats_003b60aa
+    bot_browser_loop_run_bot_2fc7148d -->|calls| bot_utils_cleanup_old_screenshots_d520f567
+    bot_chat_sender_send_reply_d62e9e8d -->|calls| bot_shopee_browser_handle_unread_chats_003b60aa
+    bot_browser_loop_5f21a2c9 -->|imports| bot_knowledge_reload_knowledge_e923bbd1
+    bot_browser_loop_5f21a2c9 -->|imports| bot_shopee_browser_handle_unread_chats_003b60aa
+    bot_browser_loop_5f21a2c9 -->|imports| bot_utils_cleanup_old_screenshots_d520f567
+    %% Omitted for readability: 43 nodes, 0 edges
+    class bot_ai_engine_e8d862d2 module;
+    class bot_ai_engine_get_auto_reply_3377ab31 function;
+    class bot_ai_engine_get_ai_reply_80204182 function;
+    class bot_ai_engine_build_system_prompt_824c0e4b function;
+    class bot_ai_engine_call_ai_api_93bdf3a1 api;
+    class bot_ai_engine_clean_ai_reply_37ba4f4a function;
+    class bot_browser_loop_5f21a2c9 module;
+    class bot_browser_loop_run_bot_2fc7148d function;
+    class bot_chat_sender_send_reply_d62e9e8d function;
+    class bot_chat_sender_e6e5038a module;
+    class bot_tests_test_ai_engine_test_get_ai_reply_gemin_02cdf69b test;
+    class bot_tests_test_ai_engine_test_get_ai_reply_ollam_aa2bd42b test;
+    class bot_tests_test_utils_test_get_auto_reply_3a5686df test;
+    class bot_tests_test_utils_test_clean_ai_reply_8f24b31e test;
+    class bot_chat_navigation_a39cca3f module;
+    class bot_knowledge_reload_knowledge_e923bbd1 function;
+    class bot_shopee_browser_handle_unread_chats_003b60aa function;
+    class bot_utils_cleanup_old_screenshots_d520f567 function;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>cleanup_old_screenshots()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>config.py</code><br><small style="color:var(--muted)">bot/config.py</small><br><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br>+7 more</td>
+  <td>Module file in bot/browser_loop.py.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>run_bot()</code><br><small style="color:var(--muted)">bot/browser_loop.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>cleanup_old_screenshots()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>handle_unread_chats()</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small><br>+2 more</td>
+  <td>run_bot() node in bot/browser_loop.py.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>chat_navigation.py</code><br><small style="color:var(--muted)">bot/chat_navigation.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>shopee_browser.py</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small><br><code>state.py</code><br><small style="color:var(--muted)">bot/state.py</small><br>+1 more</td>
+  <td>Module file in bot/chat_navigation.py.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>setup_chat_view()</code><br><small style="color:var(--muted)">bot/chat_navigation.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>handle_unread_chats()</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small><br><code>shopee_browser.py</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small></td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>Page</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil.</code><br><small style="color:var(--muted)">bot/chat_navigation.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Memastikan tampilan chat siap. Tidak akan menekan tombol jika chat sudah tampil..</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>chat_sender.py</code><br><small style="color:var(--muted)">bot/chat_sender.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>config.py</code><br><small style="color:var(--muted)">bot/config.py</small><br><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>shopee_browser.py</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small><br>+2 more</td>
+  <td>Module file in bot/chat_sender.py.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>shopee_browser.py</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td><code>ai_engine.py</code><br><small style="color:var(--muted)">bot/ai_engine.py</small><br><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>chat_navigation.py</code><br><small style="color:var(--muted)">bot/chat_navigation.py</small><br>+5 more</td>
+  <td><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>is_assistant_ai_msg()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>state.py</code><br><small style="color:var(--muted)">bot/state.py</small><br>+1 more</td>
+  <td>Module file in bot/shopee_browser.py.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>handle_unread_chats()</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>get_ai_reply()</code><br><small style="color:var(--muted)">bot/ai_engine.py</small><br><code>run_bot()</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br>+2 more</td>
+  <td><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small><br><code>is_assistant_ai_msg()</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>Page</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>test_is_assistant_ai_msg()</code><br><small style="color:var(--muted)">bot/tests/test_utils.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>is_assistant_ai_msg()</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td>Verifies imports, entry points, or version behavior.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>utils.py</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>chat_navigation.py</code><br><small style="color:var(--muted)">bot/chat_navigation.py</small><br><code>chat_sender.py</code><br><small style="color:var(--muted)">bot/chat_sender.py</small><br>+2 more</td>
+  <td>No direct outbound edge</td>
+  <td>Module file in bot/utils.py.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>cleanup_old_screenshots()</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>run_bot()</code><br><small style="color:var(--muted)">bot/browser_loop.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>cleanup_old_screenshots() node in bot/utils.py.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>is_assistant_ai_msg()</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>handle_unread_chats()</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small><br><code>shopee_browser.py</code><br><small style="color:var(--muted)">bot/shopee_browser.py</small><br><code>test_is_assistant_ai_msg()</code><br><small style="color:var(--muted)">bot/tests/test_utils.py</small><br>+1 more</td>
+  <td>No direct outbound edge</td>
+  <td>is_assistant_ai_msg() node in bot/utils.py.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>do_human_delay()</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>chat_navigation.py</code><br><small style="color:var(--muted)">bot/chat_navigation.py</small><br><code>chat_sender.py</code><br><small style="color:var(--muted)">bot/chat_sender.py</small><br>+5 more</td>
+  <td>No direct outbound edge</td>
+  <td>do_human_delay() node in bot/utils.py.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>Check if the text indicates it&#x27;s from Assistant AI or an Auto-Reply.</code><br><small style="color:var(--muted)">bot/utils.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Check if the text indicates it&#x27;s from Assistant AI or an Auto-Reply..</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>config.py</code><br><small style="color:var(--muted)">bot/config.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td><code>ai_engine.py</code><br><small style="color:var(--muted)">bot/ai_engine.py</small><br><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>chat_sender.py</code><br><small style="color:var(--muted)">bot/chat_sender.py</small></td>
+  <td><code>health.py</code><br><small style="color:var(--muted)">bot/health.py</small><br><code>knowledge.py</code><br><small style="color:var(--muted)">bot/knowledge.py</small><br><code>main.py</code><br><small style="color:var(--muted)">bot/main.py</small><br>+2 more</td>
+  <td>Module file in bot/config.py.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>_load_js()</code><br><small style="color:var(--muted)">bot/config.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>_load_js() node in bot/config.py.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>health.py</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td><code>config.py</code><br><small style="color:var(--muted)">bot/config.py</small></td>
+  <td><code>main.py</code><br><small style="color:var(--muted)">bot/main.py</small><br><code>state.py</code><br><small style="color:var(--muted)">bot/state.py</small></td>
+  <td>Module file in bot/health.py.</td>
+</tr>
+<tr>
+  <td>20</td>
+  <td><code>HealthHandler</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>do_GET()</code><br><small style="color:var(--muted)">bot/health.py</small><br><code>log_message()</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td>HealthHandler node in bot/health.py.</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td><code>BaseHTTPRequestHandler</code><br><small style="color:var(--muted)"></small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>BaseHTTPRequestHandler node in project.</td>
+</tr>
+<tr>
+  <td>22</td>
+  <td><code>.do_GET()</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>HealthHandler</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>.do_GET() node in bot/health.py.</td>
+</tr>
+<tr>
+  <td>23</td>
+  <td><code>.log_message()</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>HealthHandler</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>.log_message() node in bot/health.py.</td>
+</tr>
+<tr>
+  <td>24</td>
+  <td><code>start_health_server()</code><br><small style="color:var(--muted)">bot/health.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>main.py</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td>start_health_server() node in bot/health.py.</td>
+</tr>
+<tr>
+  <td>25</td>
+  <td><code>main.py</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td><code>browser_loop.py</code><br><small style="color:var(--muted)">bot/browser_loop.py</small><br><code>config.py</code><br><small style="color:var(--muted)">bot/config.py</small><br><code>health.py</code><br><small style="color:var(--muted)">bot/health.py</small><br>+2 more</td>
+  <td>No direct outbound edge</td>
+  <td>Module file in bot/main.py.</td>
+</tr>
+<tr>
+  <td>26</td>
+  <td><code>JsonFormatter</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>format()</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td>JsonFormatter node in bot/main.py.</td>
+</tr>
+<tr>
+  <td>27</td>
+  <td><code>.format()</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td><code>JsonFormatter</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>.format() node in bot/main.py.</td>
+</tr>
+<tr>
+  <td>28</td>
+  <td><code>Shopee Auto-Reply Bot Runs as a daemon using Playwright persistent context for</code><br><small style="color:var(--muted)">bot/main.py</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Shopee Auto-Reply Bot Runs as a daemon using Playwright persistent context for.</td>
+</tr>
+<tr>
+  <td>29</td>
+  <td><code>test_config.py</code><br><small style="color:var(--muted)">bot/tests/test_config.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td><code>config.py</code><br><small style="color:var(--muted)">bot/config.py</small></td>
+  <td>No direct outbound edge</td>
+  <td>Module file in bot/tests/test_config.py.</td>
+</tr>
+<tr>
+  <td>30</td>
+  <td><code>test_config_defaults()</code><br><small style="color:var(--muted)">bot/tests/test_config.py</small></td>
+  <td><span class="tag tag-func">Test</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Reads, resolves, or persists project configuration.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>bot/ai_engine.py</code></td><td>7 nodes</td></tr>
+<tr><td><code>bot/health.py</code></td><td>5 nodes</td></tr>
+<tr><td><code>bot/utils.py</code></td><td>5 nodes</td></tr>
+<tr><td><code>bot/knowledge.py</code></td><td>4 nodes</td></tr>
+<tr><td><code>bot/main.py</code></td><td>4 nodes</td></tr>
+<tr><td><code>bot/tests/test_utils.py</code></td><td>4 nodes</td></tr>
+<tr><td><code>bot/chat_navigation.py</code></td><td>3 nodes</td></tr>
+<tr><td><code>bot/chat_sender.py</code></td><td>3 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: imports x31, contains x30, calls x25, imports x19. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 4. Sellerjs Bot Isseller ====== -->
+<h2 id="sellerjs-bot-isseller">4. Sellerjs Bot Isseller</h2>
+<p>Sellerjs Bot Isseller groups implementation around sellerjs, bot, isseller, mostly in bot/js/is_seller.js. This section covers 2 nodes and 1 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Sellerjs Bot Isseller (2 nodes, 1 edges)
+    bot_js_is_seller_b0ff5d5f("is_seller.js")
+    bot_js_is_seller_isseller_239deefc("isSeller()<br/><small>bot/js/is_seller.js</small>")
+    bot_js_is_seller_b0ff5d5f -->|contains| bot_js_is_seller_isseller_239deefc
+    class bot_js_is_seller_b0ff5d5f module;
+    class bot_js_is_seller_isseller_239deefc async;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>is_seller.js</code><br><small style="color:var(--muted)">bot/js/is_seller.js</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>is_seller.js node in bot/js/is_seller.js.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>isSeller()</code><br><small style="color:var(--muted)">bot/js/is_seller.js</small></td>
+  <td><span class="tag tag-async">Async</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>isSeller() node in bot/js/is_seller.js.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>bot/js/is_seller.js</code></td><td>2 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 5. Bot ====== -->
+<h2 id="bot">5. Bot</h2>
+<p>Bot groups implementation around bot, mostly in bot/__init__.py. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Bot (1 nodes, 0 edges)
+    bot_init_8c2ecc62("__init__.py")
+    class bot_init_8c2ecc62 module;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>bot/__init__.py</code><br><small style="color:var(--muted)">bot/__init__.py</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Module file in bot/__init__.py.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>bot/__init__.py</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 6. Get Chat Itemsjs ====== -->
+<h2 id="get-chat-itemsjs">6. Get Chat Itemsjs</h2>
+<p>Get Chat Itemsjs groups implementation around get, chat, itemsjs, bot, mostly in bot/js/get_chat_items.js. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Get Chat Itemsjs (1 nodes, 0 edges)
+    bot_js_get_chat_items_8723ae75("get_chat_items.js")
+    class bot_js_get_chat_items_8723ae75 module;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>get_chat_items.js</code><br><small style="color:var(--muted)">bot/js/get_chat_items.js</small></td>
+  <td><span class="tag tag-class">Module</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>bot/js/get_chat_items.js</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<h2 id="stats">Project Statistics</h2>
+
+<div class="grid">
+  <div class="card">
+    <h4>Graph</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><td>Nodes</td><td>69</td></tr>
+      <tr><td>Edges</td><td>128</td></tr>
+      <tr><td>Hyperedges</td><td>0</td></tr>
+      <tr><td>Communities</td><td>11</td></tr>
+      <tr><td>Documented Sections</td><td>5</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Edge Confidence</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><td>EXTRACTED</td><td>127</td></tr>
+      <tr><td>INFERRED</td><td>1</td></tr>
+      <tr><td>AMBIGUOUS</td><td>0</td></tr>
+    </table>
+  </div>
+</div>
+
+<div style="text-align:center; padding:40px 0; color: var(--muted); font-size:0.9rem;">
+  <p>autochat — Architecture Documentation</p>
+  <p>Generated: 2026-07-22 16:47 UTC · graphify callflow-html</p>
+</div>
+
+</div><!-- .container -->
+
+<script>
+(function () {
+  const mermaidConfig = {
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { htmlLabels: true, useMaxWidth: true },
+    themeVariables: {
+      primaryColor: '#1e293b',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#38bdf8',
+      secondaryColor: '#0f172a',
+      tertiaryColor: '#334155',
+      lineColor: '#64748b',
+      textColor: '#e2e8f0',
+    }
+  };
+
+  mermaid.initialize(mermaidConfig);
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function enhanceMermaidDiagrams() {
+    document.querySelectorAll('.mermaid').forEach((container) => {
+      if (container.dataset.zoomReady === 'true') return;
+      const svg = container.querySelector('svg');
+      if (!svg) return;
+
+      container.dataset.zoomReady = 'true';
+      container.classList.add('is-enhanced');
+
+      const viewport = document.createElement('div');
+      viewport.className = 'mermaid-viewport';
+      svg.parentNode.insertBefore(viewport, svg);
+      viewport.appendChild(svg);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'mermaid-toolbar';
+      toolbar.innerHTML = [
+        '<button type="button" data-action="zoom-out" title="Zoom out">-</button>',
+        '<span class="zoom-level" data-role="level">100%</span>',
+        '<button type="button" data-action="zoom-in" title="Zoom in">+</button>',
+        '<button type="button" data-action="fit" title="Fit width">Fit</button>',
+        '<button type="button" data-action="reset" title="Reset view">Reset</button>'
+      ].join('');
+      container.insertBefore(toolbar, viewport);
+
+      const state = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0, originX: 0, originY: 0 };
+      const level = toolbar.querySelector('[data-role="level"]');
+
+      function applyTransform() {
+        svg.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+        level.textContent = `${Math.round(state.scale * 100)}%`;
+      }
+
+      function zoomBy(delta) {
+        state.scale = clamp(state.scale + delta, 0.25, 3);
+        applyTransform();
+      }
+
+      function reset() {
+        state.scale = 1;
+        state.x = 0;
+        state.y = 0;
+        applyTransform();
+      }
+
+      function fitWidth() {
+        const rawWidth = svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width
+          ? svg.viewBox.baseVal.width
+          : svg.getBoundingClientRect().width / state.scale;
+        if (!rawWidth) {
+          reset();
+          return;
+        }
+        state.scale = clamp((viewport.clientWidth - 48) / rawWidth, 0.25, 1.4);
+        state.x = 0;
+        state.y = 0;
+        applyTransform();
+      }
+
+      toolbar.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+        if (action === 'zoom-in') zoomBy(0.15);
+        if (action === 'zoom-out') zoomBy(-0.15);
+        if (action === 'fit') fitWidth();
+        if (action === 'reset') reset();
+      });
+
+      viewport.addEventListener('wheel', (event) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
+      }, { passive: false });
+
+      viewport.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        state.dragging = true;
+        state.startX = event.clientX;
+        state.startY = event.clientY;
+        state.originX = state.x;
+        state.originY = state.y;
+        viewport.classList.add('is-dragging');
+        viewport.setPointerCapture(event.pointerId);
+      });
+
+      viewport.addEventListener('pointermove', (event) => {
+        if (!state.dragging) return;
+        state.x = state.originX + event.clientX - state.startX;
+        state.y = state.originY + event.clientY - state.startY;
+        applyTransform();
+      });
+
+      function endDrag(event) {
+        if (!state.dragging) return;
+        state.dragging = false;
+        viewport.classList.remove('is-dragging');
+        if (viewport.hasPointerCapture(event.pointerId)) {
+          viewport.releasePointerCapture(event.pointerId);
+        }
+      }
+
+      viewport.addEventListener('pointerup', endDrag);
+      viewport.addEventListener('pointercancel', endDrag);
+      applyTransform();
+    });
+  }
+
+  function renderMermaid() {
+    const result = mermaid.run
+      ? mermaid.run({ querySelector: '.mermaid' })
+      : Promise.resolve();
+    Promise.resolve(result)
+      .then(enhanceMermaidDiagrams)
+      .catch((error) => {
+        console.error('Mermaid render failed:', error);
+        enhanceMermaidDiagrams();
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderMermaid);
+  } else {
+    renderMermaid();
+  }
+})();
+</script>
+
+</body>
+</html>

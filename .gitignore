@@ -35,4 +35,6 @@ profiles/
 unanswered_questions.txt
 .ruff_cache/
 output.log
-temp_log.txt!graphify-out/*.html
+temp_log.txt
+ 
+!graphify-out/*.html
