@@ -202,6 +202,12 @@ jobs:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AI_PROVIDER: "ollama"
+          SHOPEE_USERNAME: ${{ secrets.SHOPEE_USERNAME }}
+          SHOPEE_PASSWORD: ${{ secrets.SHOPEE_PASSWORD }}
+          BOT1_SHOPEE_USERNAME: ${{ secrets.BOT1_SHOPEE_USERNAME }}
+          BOT1_SHOPEE_PASSWORD: ${{ secrets.BOT1_SHOPEE_PASSWORD }}
+          BOT2_SHOPEE_USERNAME: ${{ secrets.BOT2_SHOPEE_USERNAME }}
+          BOT2_SHOPEE_PASSWORD: ${{ secrets.BOT2_SHOPEE_PASSWORD }}
         run: |
           TARGET_DIR="/home/gpu/actions-runner-autochat/runner-autochat/autochat/autochat"
           
