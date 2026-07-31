@@ -40,7 +40,7 @@ def build_system_prompt() -> str:
         "1. Jawab pertanyaan spesifik mengenai produk berdasarkan [KNOWLEDGE BASE].\n"
         "2. Jika pembeli meminta pilih motif/warna, jawab: \"Halo kak! Untuk pilihan motif atau warna, silakan tuliskan di Catatan Penjual saat checkout ya kak 😊\"\n"
         "3. Jika pembeli meminta dikirim cepat (buru-buru/kapan dikirim), jawab: \"Pesanan kakak akan segera kami proses dan kirimkan sesuai antrean ya kak, mohon ditunggu 😊\"\n"
-        "4. DILARANG KERAS membuat obrolan basa-basi yang panjang atau mengarang jawaban. Jika pembeli sekadar menyapa (halo/hi) tanpa bertanya, jawab SINGKAT: 'Halo kak! Ada yang bisa dibantu?'.\n"
+        "4. DILARANG KERAS membuat obrolan basa-basi yang panjang atau mengarang jawaban. Jika pembeli sekadar menyapa (halo/hi) tanpa bertanya, atau chatnya terpotong dan tidak jelas tujuannya, Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU\n"
         "5. Jika pembeli HANYA mengucapkan terima kasih, doa, pujian, atau konfirmasi pesanan (contoh: 'makasih', 'sukses selalu', 'oke tolong kirim'), Anda WAJIB menjawab HANYA dengan kata: SKIP\n"
         "6. Jika pembeli menanyakan komplain, masalah pesanan, ATAU menanyakan hal apapun yang TIDAK ADA jawabannya di [KNOWLEDGE BASE], Anda WAJIB menjawab HANYA dengan kata: TIDAK TAHU\n"
         "7. Jawab sesingkat dan se-natural mungkin. Jangan pernah memberikan kalimat penutup yang bertele-tele seperti CS robot.\n"

@@ -38,45 +38,45 @@ services:
         limits:
           memory: 3g
 
-  shopee-bot-2:
-    image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
-    container_name: shopee-bot-2
-    shm_size: 2gb
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    environment:
-      - HEADLESS=false
-      - PROFILE_DIR=/data/shopee-profile
-      - POLL_INTERVAL=4
-      - OLLAMA_URL=http://ollama:11434
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - AI_PROVIDER=${AI_PROVIDER:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
-      - OLLAMA_MODEL=qwen2.5:3b
-      - UNANSWERED_PATH=/app/unanswered_questions.txt
-      - TZ=Asia/Jakarta
-      - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
-      - SHOPEE_USERNAME=${BOT2_SHOPEE_USERNAME:-}
-      - SHOPEE_PASSWORD=${BOT2_SHOPEE_PASSWORD:-}
-
-    volumes:
-      - profile-bot2:/data/shopee-profile
-      - ./logs/bot2:/data/logs
-      - ./store_knowledge.txt:/app/store_knowledge.txt
-      - ./unanswered_questions.txt:/app/unanswered_questions.txt
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "6082:6080"
-      - "7082:8080"
-    deploy:
-      resources:
-        limits:
-          memory: 3g
+#  shopee-bot-2:
+#    image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
+#    container_name: shopee-bot-2
+#    shm_size: 2gb
+#    restart: unless-stopped
+#    healthcheck:
+#      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+#    environment:
+#      - HEADLESS=false
+#      - PROFILE_DIR=/data/shopee-profile
+#      - POLL_INTERVAL=4
+#      - OLLAMA_URL=http://ollama:11434
+#      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+#      - AI_PROVIDER=${AI_PROVIDER:-}
+#      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+#      - OLLAMA_MODEL=qwen2.5:3b
+#      - UNANSWERED_PATH=/app/unanswered_questions.txt
+#      - TZ=Asia/Jakarta
+#      - MAX_DAILY_REPLIES=${MAX_DAILY_REPLIES:-5000}
+#      - SHOPEE_USERNAME=${BOT2_SHOPEE_USERNAME:-}
+#      - SHOPEE_PASSWORD=${BOT2_SHOPEE_PASSWORD:-}
+#
+#    volumes:
+#      - profile-bot2:/data/shopee-profile
+#      - ./logs/bot2:/data/logs
+#      - ./store_knowledge.txt:/app/store_knowledge.txt
+#      - ./unanswered_questions.txt:/app/unanswered_questions.txt
+#    extra_hosts:
+#      - "host.docker.internal:host-gateway"
+#    ports:
+#      - "6082:6080"
+#      - "7082:8080"
+#    deploy:
+#      resources:
+#        limits:
+#          memory: 3g
 
 #  shopee-bot-3:
 #    image: ${DOCKER_USERNAME:-cobacobiy}/shopee-autochat-bot:${IMAGE_TAG:-latest}
