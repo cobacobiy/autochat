@@ -77,6 +77,9 @@ jobs:
               f.write(f"IMAGE_TAG={tag}\n")
           print(f"Image tag: {tag}")
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -101,23 +104,29 @@ jobs:
               docker_user = "local"
               
           image = f"{docker_user}/shopee-autochat-bot:{os.environ.get('IMAGE_TAG')}"
+          image_latest = f"{docker_user}/shopee-autochat-bot:latest"
           print(f"Building: {image}")
           
-          subprocess.run(["docker", "build", "-t", image, "./bot"], check=True)
+          build_args = [
+              "docker", "buildx", "build",
+              "--cache-from", "type=gha",
+              "--cache-to", "type=gha,mode=max",
+              "-t", image,
+              "./bot"
+          ]
           
-          # Jika deploy dari main, beri tag latest juga
-          image_latest = f"{docker_user}/shopee-autochat-bot:latest"
           if os.environ.get('IMAGE_TAG', '').startswith('main-'):
-              subprocess.run(["docker", "tag", image, image_latest], check=True)
+              build_args.extend(["-t", image_latest])
               
           if docker_user != "local":
-              subprocess.run(["docker", "push", image], check=True)
-              print(f"Image pushed: {image}")
-              if os.environ.get('IMAGE_TAG', '').startswith('main-'):
-                  subprocess.run(["docker", "push", image_latest], check=True)
-                  print(f"Image pushed: {image_latest}")
+              build_args.append("--push")
+              print("Pushing to Docker Hub via buildx...")
           else:
-              print(f"Skipping push: Docker Hub credentials not configured. Image built locally as {image}")
+              build_args.append("--load")
+              print("Building locally via buildx...")
+              
+          subprocess.run(build_args, check=True)
+          print(f"Build completed successfully.")
 
   # ============================================
   # Job 3: Deploy Preview (HANYA saat PR)
