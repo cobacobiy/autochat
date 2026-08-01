@@ -13,19 +13,23 @@ def parse_knowledge_answers():
     while i < len(lines):
         line = lines[i].strip()
         if line.startswith("T:"):
-            question = line[2:].strip().lower()
+            question_parts = [line[2:].strip()]
             j = i + 1
             while j < len(lines):
                 next_line = lines[j].strip()
                 if next_line.startswith("J:"):
                     answer = next_line[2:].strip()
+                    question = " ".join(p for p in question_parts if p).lower()
                     if question and answer:
                         bot_state.knowledge_answers[question] = answer
                     break
                 elif next_line.startswith(("T:", "#")):
                     break
+                else:
+                    if next_line:
+                        question_parts.append(next_line)
                 j += 1
-            i = j
+            i = j if j > i else i + 1
         else:
             i += 1
 

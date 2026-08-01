@@ -215,7 +215,7 @@ jobs:
           mkdir -p "$TARGET_DIR"
           
           # 2. Sinkronisasi file dari repositori ke folder permanen
-          #    Exclude .git, .env, store_knowledge.txt, dan unanswered_questions.txt agar data penting tidak tertimpa/terhapus.
+          #    Exclude .git, .env, dan unanswered_questions agar data penting tidak tertimpa/terhapus.
           rsync -av --delete \
             --exclude '.git' \
             --exclude '.env' \
