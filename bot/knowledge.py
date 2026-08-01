@@ -8,13 +8,26 @@ log = logging.getLogger(__name__)
 
 def parse_knowledge_answers():
     bot_state.knowledge_answers.clear()
-    for line in bot_state.knowledge_base.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "|" in line:
-            parts = line.split("|", 1)
-            bot_state.knowledge_answers[parts[0].strip().lower()] = parts[1].strip()
+    lines = bot_state.knowledge_base.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("T:"):
+            question = line[2:].strip().lower()
+            j = i + 1
+            while j < len(lines):
+                next_line = lines[j].strip()
+                if next_line.startswith("J:"):
+                    answer = next_line[2:].strip()
+                    if question and answer:
+                        bot_state.knowledge_answers[question] = answer
+                    break
+                elif next_line.startswith("T:") or next_line.startswith("#"):
+                    break
+                j += 1
+            i = j
+        else:
+            i += 1
 
 def reload_knowledge():
     """Load FAQ from TXT file based on KNOWLEDGE_PATH."""

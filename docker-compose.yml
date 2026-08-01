@@ -27,7 +27,7 @@ services:
       - profile-bot1:/data/shopee-profile
       - ./logs/bot1:/data/logs
       - ./store_knowledge.txt:/app/store_knowledge.txt
-      - ./unanswered_questions.txt:/app/unanswered_questions.txt
+      - ./unanswered_questions_bot1.txt:/app/unanswered_questions.txt
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -67,7 +67,7 @@ services:
 #      - profile-bot2:/data/shopee-profile
 #      - ./logs/bot2:/data/logs
 #      - ./store_knowledge.txt:/app/store_knowledge.txt
-#      - ./unanswered_questions.txt:/app/unanswered_questions.txt
+#      - ./unanswered_questions_bot2.txt:/app/unanswered_questions.txt
 #    extra_hosts:
 #      - "host.docker.internal:host-gateway"
 #    ports:
@@ -106,7 +106,7 @@ services:
 #      - profile-bot3:/data/shopee-profile
 #      - ./logs/bot3:/data/logs
 #      - ./store_knowledge.txt:/app/store_knowledge.txt
-#      - ./unanswered_questions.txt:/app/unanswered_questions.txt
+#      - ./unanswered_questions_bot3.txt:/app/unanswered_questions.txt
 #    extra_hosts:
 #      - "host.docker.internal:host-gateway"
 #    ports:
@@ -285,8 +285,8 @@ volumes:
 
 
   profile-bot1:
-  profile-bot2:
-  profile-bot3:
+#  profile-bot2:
+#  profile-bot3:
 #  profile-bot4:
 #  profile-bot5:
 #  profile-bot6:

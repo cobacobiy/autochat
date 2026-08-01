@@ -143,8 +143,6 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SHOPEE_USERNAME: ${{ secrets.SHOPEE_USERNAME }}
-          SHOPEE_PASSWORD: ${{ secrets.SHOPEE_PASSWORD }}
           AI_PROVIDER: "ollama"
         run: |
           Write-Host "Deploying PR #${{ github.event.pull_request.number }} preview..."
@@ -206,8 +204,8 @@ jobs:
           SHOPEE_PASSWORD: ${{ secrets.SHOPEE_PASSWORD }}
           BOT1_SHOPEE_USERNAME: ${{ secrets.BOT1_SHOPEE_USERNAME }}
           BOT1_SHOPEE_PASSWORD: ${{ secrets.BOT1_SHOPEE_PASSWORD }}
-          BOT2_SHOPEE_USERNAME: ${{ secrets.BOT2_SHOPEE_USERNAME }}
-          BOT2_SHOPEE_PASSWORD: ${{ secrets.BOT2_SHOPEE_PASSWORD }}
+#          BOT2_SHOPEE_USERNAME: ${{ secrets.BOT2_SHOPEE_USERNAME }}
+#          BOT2_SHOPEE_PASSWORD: ${{ secrets.BOT2_SHOPEE_PASSWORD }}
         run: |
           TARGET_DIR="/home/gpu/actions-runner-autochat/runner-autochat/autochat/autochat"
           
@@ -221,15 +219,13 @@ jobs:
           rsync -av --delete \
             --exclude '.git' \
             --exclude '.env' \
-            --exclude 'store_knowledge.txt' \
-            --exclude 'unanswered_questions.txt' \
+            --exclude 'unanswered_questions*.txt' \
             --exclude 'profiles' \
             --exclude 'logs' \
             ./ "$TARGET_DIR/"
             
           # 3. Pastikan file data eksis (buat kosong jika belum ada)
-          touch "$TARGET_DIR/store_knowledge.txt"
-          touch "$TARGET_DIR/unanswered_questions.txt"
+          touch "$TARGET_DIR/unanswered_questions_bot1.txt"
           
           # 4. Hapus preview container yang mungkin masih menyala
           docker rm -f shopee-bot-preview || true
