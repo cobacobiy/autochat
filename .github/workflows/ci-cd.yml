@@ -145,37 +145,43 @@ jobs:
           python-version: '3.11'
 
       - name: Deploy Preview Container
-        # ⚠️ PENTING: Jangan gunakan `shell: bash` di sini! Runner Windows (Local System) tidak mendukung WSL.
-        # Selalu gunakan `shell: powershell` (Windows PowerShell) atau `shell: python`.
-        shell: powershell
+        shell: python
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AI_PROVIDER: "ollama"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          Write-Host "Deploying PR #${{ github.event.pull_request.number }} preview..."
+          import os
+          import subprocess
           
-          docker ps -q -f name=shopee-bot-preview | ForEach-Object { docker rm -f $_ }
+          print(f"Deploying PR #{os.environ.get('PR_NUMBER')} preview...")
           
-          $DOCKER_USER = if ([string]::IsNullOrEmpty($env:DOCKER_USERNAME)) { "local" } else { $env:DOCKER_USERNAME }
-          $env:DOCKER_USERNAME = $DOCKER_USER
+          # Hapus container lama jika ada (abaikan error jika tidak ada)
+          subprocess.run(["docker", "rm", "-f", "shopee-bot"], stderr=subprocess.DEVNULL)
           
-          # ⚠️ FIX: Create the files first to prevent Docker from mounting them as directories
-          New-Item -ItemType File -Force -Path "unanswered_questions_bot1.txt" | Out-Null
-          New-Item -ItemType File -Force -Path "store_knowledge.txt" | Out-Null
+          docker_user = os.environ.get("DOCKER_USERNAME")
+          if not docker_user:
+              docker_user = "local"
+          os.environ["DOCKER_USERNAME"] = docker_user
           
-          if ($DOCKER_USER -eq "local") {
-              Write-Host "Building locally for preview because no Docker Hub registry is used..."
-              docker compose up -d --build
-          } else {
-              Write-Host "Pulling images from registry..."
-              docker compose pull
-              docker compose up -d
-          }
-          docker image prune -f
+          # ⚠️ FIX: Create the files first to prevent Docker from mounting them as directories (Cross-platform)
+          for filename in ["unanswered_questions_bot1.txt", "store_knowledge.txt"]:
+              if not os.path.exists(filename):
+                  open(filename, "w").close()
+          
+          if docker_user == "local":
+              print("Building locally for preview because no Docker Hub registry is used...")
+              subprocess.run(["docker", "compose", "up", "-d", "--build"], check=True)
+          else:
+              print("Pulling images from registry...")
+              subprocess.run(["docker", "compose", "pull"], check=True)
+              subprocess.run(["docker", "compose", "up", "-d"], check=True)
               
-          Write-Host "`nPreview berhasil di-deploy menggunakan docker-compose!"
+          subprocess.run(["docker", "image", "prune", "-f"], check=False)
+          
+          print("\nPreview berhasil di-deploy menggunakan docker-compose!")
 
   # ============================================
   # Cleanup Preview Container
