@@ -161,6 +161,10 @@ jobs:
           $DOCKER_USER = if ([string]::IsNullOrEmpty($env:DOCKER_USERNAME)) { "local" } else { $env:DOCKER_USERNAME }
           $env:DOCKER_USERNAME = $DOCKER_USER
           
+          # ⚠️ FIX: Create the files first to prevent Docker from mounting them as directories
+          New-Item -ItemType File -Force -Path "unanswered_questions_bot1.txt" | Out-Null
+          New-Item -ItemType File -Force -Path "store_knowledge.txt" | Out-Null
+          
           if ($DOCKER_USER -eq "local") {
               Write-Host "Building locally for preview because no Docker Hub registry is used..."
               docker compose up -d --build
