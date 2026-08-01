@@ -22,7 +22,7 @@ def parse_knowledge_answers():
                     if question and answer:
                         bot_state.knowledge_answers[question] = answer
                     break
-                elif next_line.startswith("T:") or next_line.startswith("#"):
+                elif next_line.startswith(("T:", "#")):
                     break
                 j += 1
             i = j
