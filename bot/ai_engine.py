@@ -1,3 +1,4 @@
+import datetime
 import logging
 import re
 
@@ -32,7 +33,6 @@ def get_auto_reply(message: str) -> str:
             return reply
     return "TIDAK TAHU"
 
-import datetime
 def build_system_prompt() -> str:
     tz = datetime.timezone(datetime.timedelta(hours=7))
     now = datetime.datetime.now(tz)
