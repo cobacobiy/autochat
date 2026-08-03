@@ -64,7 +64,10 @@ def build_system_prompt() -> str:
         "Jawaban: TIDAK TAHU\n\n"
         "Contoh 4 (Tanya hal yang ada di Knowledge Base):\n"
         "Pembeli: \"Bisa COD ga kak?\"\n"
-        "Jawaban: \"Bisa kak, kita suda aktifkan semua COD, jika lom bisa coba pakai akun lain ya kak\"\n"
+        "Jawaban: \"Bisa kak, kita suda aktifkan semua COD, jika lom bisa coba pakai akun lain ya kak\"\n\n"
+        "Contoh 5 (Pertanyaan ambigu, tidak relevan, atau basa-basi):\n"
+        "Pembeli: \"Tp jauh ga ya ka\"\n"
+        "Jawaban: TIDAK TAHU\n"
         "============================="
     )
 
@@ -182,6 +185,17 @@ def _clean_ai_reply(reply: str) -> str:
         
     if len(reply) > 400:
         log.warning("AI reply is suspiciously long (%d chars), likely a hallucination loop. Forcing TIDAK TAHU.", len(reply))
+        return "TIDAK TAHU"
+
+    # Intercept common AI assistant hallucination phrases
+    ai_assistant_phrases = [
+        "untuk membantu anda", "sebagai asisten", "sebagai ai", "detail informasi", 
+        "spesifikasi teknis", "mohon berikan", "bisa membantu menjawab", 
+        "apa yang bisa saya bantu", "apakah ada hal lain", "lebih banyak detail",
+        "dapat membantu menjawab", "saya bisa membantu"
+    ]
+    if any(phrase in reply.lower() for phrase in ai_assistant_phrases):
+        log.warning("AI replied with generic assistant phrase. Forcing TIDAK TAHU.")
         return "TIDAK TAHU"
 
     # Intercept variations and typos of "tidak tahu"
