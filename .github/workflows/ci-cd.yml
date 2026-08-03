@@ -167,7 +167,8 @@ jobs:
           os.environ["DOCKER_USERNAME"] = docker_user
           
           # ⚠️ FIX: Create the files first to prevent Docker from mounting them as directories (Cross-platform)
-          for filename in ["unanswered_questions_bot1.txt", "store_knowledge.txt"]:
+          files_to_create = ["store_knowledge.txt"] + [f"unanswered_questions_bot{i}.txt" for i in range(1, 7)]
+          for filename in files_to_create:
               if not os.path.exists(filename):
                   open(filename, "w").close()
           
@@ -243,8 +244,8 @@ jobs:
             --exclude 'logs' \
             ./ "$TARGET_DIR/"
             
-          # 3. Pastikan file data eksis (buat kosong jika belum ada)
-          touch "$TARGET_DIR/unanswered_questions_bot1.txt"
+          # 3. Pastikan file data eksis (buat kosong jika belum ada) untuk semua bot (1-6)
+          touch "$TARGET_DIR"/unanswered_questions_bot{1..6}.txt
           
           # 4. Hapus preview container yang mungkin masih menyala
           docker rm -f shopee-bot-preview || true
