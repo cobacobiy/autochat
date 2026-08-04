@@ -46,10 +46,19 @@ log = logging.getLogger(__name__)
 # Ensure required files exist
 for fpath in [UNANSWERED_PATH, KNOWLEDGE_PATH]:
     if os.path.isdir(fpath):
-        log.error("FATAL: '%s' is a directory, not a file! Removing and recreating...", fpath)
-        shutil.rmtree(fpath)
-        with open(fpath, "w") as f:
-            f.write("")
+        log.warning("'%s' is a directory! Attempting to remove...", fpath)
+        try:
+            shutil.rmtree(fpath)
+            with open(fpath, "w") as f:
+                f.write("")
+        except Exception as err:
+            log.warning("Cannot remove directory mount '%s' (%s). Continuing without crash.", fpath, err)
+    elif not os.path.exists(fpath):
+        try:
+            with open(fpath, "w") as f:
+                f.write("")
+        except Exception as err:
+            log.warning("Failed to create file '%s': %s", fpath, err)
 
 # Start HTTP Health Server
 start_health_server()
