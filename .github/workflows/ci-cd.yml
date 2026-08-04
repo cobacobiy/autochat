@@ -244,8 +244,18 @@ jobs:
             --exclude 'logs' \
             ./ "$TARGET_DIR/"
             
-          # 3. Pastikan file data eksis (buat kosong jika belum ada) untuk semua bot (1-6)
-          touch "$TARGET_DIR"/unanswered_questions_bot{1..6}.txt
+          # 3. Pastikan file data eksis (jika sudah terlanjur berupa direktori, hapus & ganti jadi file)
+          for i in {1..6}; do
+            f="$TARGET_DIR/unanswered_questions_bot${i}.txt"
+            if [ -d "$f" ]; then
+              rm -rf "$f"
+            fi
+            [ -f "$f" ] || touch "$f"
+          done
+          if [ -d "$TARGET_DIR/store_knowledge.txt" ]; then
+            rm -rf "$TARGET_DIR/store_knowledge.txt"
+          fi
+          [ -f "$TARGET_DIR/store_knowledge.txt" ] || touch "$TARGET_DIR/store_knowledge.txt"
           
           # 4. Hapus preview container yang mungkin masih menyala
           docker rm -f shopee-bot-preview || true
